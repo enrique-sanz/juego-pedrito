@@ -54,11 +54,11 @@
     if (window.Input.isKey('ArrowRight')) player.x += 220 * dt;
     player.x = Math.max(28, Math.min(W - 28 - PLAYER_W, player.x));
 
-    // Thrust
+    // Estela de propulsor del Manitou (saliendo por la trasera, parte inferior)
     if (thrustT > 0.02) {
       thrustT = 0;
-      window.Effects.thrust(player.x + 6,            player.y + PLAYER_H - 2, '#ffae40');
-      window.Effects.thrust(player.x + PLAYER_W - 7, player.y + PLAYER_H - 2, '#ffae40');
+      window.Effects.thrust(player.x + 6,            player.y + PLAYER_H,     '#ffae40');
+      window.Effects.thrust(player.x + PLAYER_W - 6, player.y + PLAYER_H,     '#ffae40');
     }
 
     // Spawnear obstáculos
@@ -100,6 +100,18 @@
     if (window.GameState.state.lives <= 0 && !lose && !window.GameState.state.infiniteLives) {
       lose = true;
       setTimeout(() => window.Loop.setScene('DEFEAT'), 700);
+    }
+  }
+
+  function drawPlayer(ctx) {
+    if (window.Vehicles && window.Vehicles.isReady()) {
+      const w = 48;
+      const h = w * window.Vehicles.aspect();
+      const cx = player.x + PLAYER_W / 2;
+      const cy = player.y + PLAYER_H - h / 2;
+      window.Vehicles.drawManitouTop(ctx, cx, cy, w);
+    } else {
+      window.Characters.drawXwing(ctx, player.x, player.y, 2);
     }
   }
 
@@ -169,8 +181,7 @@
       ctx.fillRect(o.x | 0, (o.y) | 0, o.w, 2);
     }
 
-    // X-wing
-    window.Characters.drawXwing(ctx, player.x, player.y, 2);
+    drawPlayer(ctx);
 
     window.Effects.render(ctx);
 

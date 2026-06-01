@@ -1,247 +1,348 @@
-// Pantalla 4: duelo final estilo Street Fighter contra Kike Vader.
-// Estética: cámara de fortaleza imperial con ventanal estrellado al fondo,
-// suelo de plasma, columnas de pared y Marian observando desde una pasarela.
-// Chispas al chocar sables, polvo al recibir golpes.
+// Pantalla 4: duelo final con perspectiva vertical diagonal-cenital.
+// Kike Vader arriba (fondo), Pedrito abajo (primer plano), Marian observando
+// desde una pasarela elevada a mitad de pantalla. La cámara mira la pelea
+// desde encima del hombro de Pedrito, ligeramente picada.
+//
+// Controles:
+//   ↑ avanzar (acerca Pedrito a Kike — reduce `distance`)
+//   ↓ retroceder
+//   ATAC: estocada/puñalada con el sable (movimiento recto hacia adelante)
+//   ESQUIV: ladea la cabeza y desplaza el cuerpo a un lado (i-frames breves)
+//
+// Teclado equivalente:  ↑/W  ↓/S  Z|Space ataque  X esquivar
 (function () {
   'use strict';
 
   const W = 360, H = 640;
 
-  const PED_SPEED = 70;
-  const KIKE_SPEED = 55;
-  const ATTACK_RANGE = 64;
-  const ATTACK_DAMAGE = 1;
-  const PED_MAX_HP = 6;
+  // --------- Geometría de la escena ---------
+  // Suelo de "trinchera" con punto de fuga arriba-centro.
+  const VP   = { x: W / 2, y: 96 };
+  const FLOOR_TOP    = 110;      // y donde la profundidad es 1 (lejos)
+  const FLOOR_BOTTOM = H + 20;   // y donde la profundidad es 0 (cerca)
+
+  // Anchura aparente del pasillo a cada profundidad
+  const NEAR_HALF_W = 200;       // semianchura al borde inferior
+  const FAR_HALF_W  = 32;        // semianchura al fondo
+
+  // Posición fija de Pedrito en pantalla (cámara le sigue)
+  const PED_FEET_Y = 482;
+  const PED_SCALE  = 2.6;
+
+  // Profundidad de Kike: distance ∈ [0,1] → depth ∈ [NEAR, FAR].
+  // NEAR debe ser claramente mayor que la "profundidad implícita" de Pedrito
+  // (≈0.32 para PED_FEET_Y=482) para que Kike quede SIEMPRE más arriba en
+  // pantalla que Pedrito, incluso cuando están al mínimo de distancia.
+  const KIKE_DEPTH_NEAR = 0.52;
+  const KIKE_DEPTH_FAR  = 0.94;
+
+  // Plataforma de Marian (lateral izquierdo, profundidad media)
+  const MARIAN = { x: 16, feetY: 248, scale: 1.5 };
+
+  // --------- Reglas del duelo ---------
+  const DIST_MIN = 0;
+  const DIST_MAX = 1;
+  const THRUST_RANGE = 0.22;        // distance ≤ esto = la estocada alcanza
+
+  const PED_SPEED  = 0.55;          // unidades de distance por segundo
+  const KIKE_SPEED = 0.42;
+
+  const PED_MAX_HP  = 6;
   const KIKE_MAX_HP = 8;
-  const SWING_DURATION = 0.5;
-  const SWING_HIT_AT = 0.22;
 
-  const FIGHTER_SCALE = 2.4;
-  const SPRITE_W = 14 * FIGHTER_SCALE;
-  const SPRITE_H = 20 * FIGHTER_SCALE;
-  const ARENA_Y = H - 220;  // y de los pies
+  // Estocada: ext (sable sale) → hit-window → ret (sable vuelve)
+  const THRUST_HIT0 = 0.14;
+  const THRUST_HIT1 = 0.28;
+  const THRUST_DUR  = 0.42;
+  const THRUST_COOLDOWN = 0.55;
 
-  const BTN_BACK    = { id: 'back', x: 8,        y: H - 76, w: 68, h: 68, label: '←' };
-  const BTN_FWD     = { id: 'fwd',  x: 80,       y: H - 76, w: 68, h: 68, label: '→' };
-  const BTN_DEFEND  = { id: 'def',  x: W - 148,  y: H - 76, w: 68, h: 68, label: 'BLOQ' };
-  const BTN_ATTACK  = { id: 'atk',  x: W - 76,   y: H - 76, w: 68, h: 68, label: 'ATAC' };
-  const BUTTONS = [BTN_BACK, BTN_FWD, BTN_DEFEND, BTN_ATTACK];
+  // Esquiva: ladeo en arco. i-frames durante la mayor parte del movimiento.
+  const DODGE_DUR    = 0.5;
+  const DODGE_IFR_0  = 0.06;
+  const DODGE_IFR_1  = 0.34;
+  const DODGE_COOLDOWN = 0.65;
 
+  // Botones
+  const BTN_FWD    = { id: 'fwd',   x: 8,        y: H - 76, w: 68, h: 68, label: '↑' };
+  const BTN_BACK   = { id: 'back',  x: 80,       y: H - 76, w: 68, h: 68, label: '↓' };
+  const BTN_DODGE  = { id: 'dodge', x: W - 148,  y: H - 76, w: 68, h: 68, label: 'ESQUI' };
+  const BTN_ATTACK = { id: 'atk',   x: W - 76,   y: H - 76, w: 68, h: 68, label: 'ATAC' };
+  const BUTTONS = [BTN_FWD, BTN_BACK, BTN_DODGE, BTN_ATTACK];
+
+  // --------- Estado ---------
   let ped, kike;
-  let stars, hitFlash, ended;
-  let prevAttackHeld = false;
+  let distance;
+  let stars;
   let bobT, plasmaT;
-  let walkAnim;  // 0..1 alternancia para piernas
+  let hitFlash, missFlash;
+  let ended;
+  let prevAttack = false, prevDodge = false;
+  let dodgeFlip = 1; // alterna lado al esquivar para variedad
 
   function enter() {
-    ped  = makeFighter({ x: 80,           hp: PED_MAX_HP,  facing:  1 });
-    kike = makeFighter({ x: W - 80 - SPRITE_W, hp: KIKE_MAX_HP, facing: -1 });
-    hitFlash = 0;
+    distance = 0.85;
+    bobT = 0; plasmaT = 0;
+    hitFlash = 0; missFlash = 0;
     ended = false;
-    prevAttackHeld = false;
-    bobT = 0; plasmaT = 0; walkAnim = 0;
-    stars = window.Stars.createField({ width: W, height: 180, count: 26, speed: 4 });
+    prevAttack = false; prevDodge = false;
+    dodgeFlip = 1;
+    ped = makeFighter({ hp: PED_MAX_HP });
+    kike = makeFighter({ hp: KIKE_MAX_HP });
+    stars = window.Stars.createField({ width: W, height: 90, count: 18, speed: 3 });
     window.Effects.reset();
   }
 
   function makeFighter(cfg) {
     return {
-      x: cfg.x,
-      y: ARENA_Y,
       hp: cfg.hp,
       maxHp: cfg.hp,
-      facing: cfg.facing,
-      state: 'idle',
-      swingT: 0,
-      swingHit: false,
-      attackCooldown: 0,
-      stunned: 0,
-      defendT: 0,
+      state: 'idle',          // 'idle' | 'thrusting' | 'dodging'
+      thrustT: 0,
+      thrustHit: false,
+      thrustCd: 0,
+      dodgeT: 0,
+      dodgeDir: 1,
+      dodgeCd: 0,
+      stun: 0,
       shake: 0,
-      moving: false,
       aiTimer: 0,
-      aiNext: 0.6 + Math.random() * 0.4,
+      aiNext: 0.7 + Math.random() * 0.5,
     };
   }
 
   function held(btn) { return window.Input.anyPointerInside(btn); }
 
+  // --------- Update ---------
   function update(dt) {
-    bobT += dt;
-    plasmaT += dt;
-    walkAnim += dt;
+    bobT += dt; plasmaT += dt;
     stars.update(dt);
     window.Effects.update(dt);
     hitFlash = Math.max(0, hitFlash - dt);
+    missFlash = Math.max(0, missFlash - dt);
 
     if (ended) return;
 
-    ped.attackCooldown = Math.max(0, ped.attackCooldown - dt);
-    kike.attackCooldown = Math.max(0, kike.attackCooldown - dt);
-    ped.stunned = Math.max(0, ped.stunned - dt);
-    kike.stunned = Math.max(0, kike.stunned - dt);
-    ped.shake = Math.max(0, ped.shake - dt);
-    kike.shake = Math.max(0, kike.shake - dt);
+    advanceFighter(ped, dt);
+    advanceFighter(kike, dt);
 
-    const wantFwd  = held(BTN_FWD)  || window.Input.isKey('ArrowRight');
-    const wantBack = held(BTN_BACK) || window.Input.isKey('ArrowLeft');
-    const wantDef  = held(BTN_DEFEND) || window.Input.isKey('KeyX');
-    const attackHeld = held(BTN_ATTACK) || window.Input.isKey('KeyZ') || window.Input.isKey('Space');
-    const attackTap = attackHeld && !prevAttackHeld;
-    prevAttackHeld = attackHeld;
+    // Input de Pedrito
+    const wantFwd  = held(BTN_FWD)  || window.Input.isKey('ArrowUp')   || window.Input.isKey('KeyW');
+    const wantBack = held(BTN_BACK) || window.Input.isKey('ArrowDown') || window.Input.isKey('KeyS');
+    const atk  = held(BTN_ATTACK) || window.Input.isKey('KeyZ') || window.Input.isKey('Space');
+    const dodge = held(BTN_DODGE) || window.Input.isKey('KeyX');
+    const atkTap   = atk   && !prevAttack;
+    const dodgeTap = dodge && !prevDodge;
+    prevAttack = atk; prevDodge = dodge;
 
-    ped.moving = false;
-    if (!ped.stunned) {
-      if (ped.state !== 'swinging') {
-        ped.state = wantDef ? 'defending' : 'idle';
+    if (ped.stun <= 0) {
+      if (atkTap && canAttack(ped))   startThrust(ped);
+      if (dodgeTap && canDodge(ped))  startDodge(ped);
+
+      if (ped.state === 'idle') {
+        const speed = PED_SPEED * (ped.state === 'idle' ? 1 : 0.4);
+        if (wantFwd)  distance -= speed * dt;
+        if (wantBack) distance += speed * dt;
+      } else if (ped.state === 'thrusting') {
+        // movimiento muy reducido durante estocada
+        if (wantFwd)  distance -= PED_SPEED * 0.25 * dt;
+        if (wantBack) distance += PED_SPEED * 0.25 * dt;
       }
-      if (attackTap && ped.attackCooldown <= 0 && ped.state !== 'swinging' && !wantDef) {
-        startSwing(ped);
-      }
-      let speed = PED_SPEED;
-      if (ped.state === 'defending') speed *= 0.4;
-      if (ped.state === 'swinging')  speed *= 0.25;
-      let dx = 0;
-      if (wantFwd)  dx += ped.facing;
-      if (wantBack) dx -= ped.facing;
-      if (dx !== 0) ped.moving = true;
-      ped.x += dx * speed * dt;
     }
 
-    updateAI(kike, ped, dt);
+    updateAI(dt);
 
-    const minGap = 14;
-    if (ped.x > kike.x - minGap) {
-      const mid = (ped.x + kike.x) / 2;
-      ped.x  = mid - minGap / 2;
-      kike.x = mid + minGap / 2;
+    distance = Math.max(DIST_MIN, Math.min(DIST_MAX, distance));
+
+    resolveThrust(ped,  kike);
+    resolveThrust(kike, ped);
+
+    if (kike.hp <= 0 && !ended) {
+      ended = true;
+      window.Audio8.sfx('win');
+      window.Effects.explosion(W / 2, 200, { count: 30, speed: 130 });
+      setTimeout(() => window.Loop.setScene('VICTORY'), 1100);
     }
-    ped.x  = Math.max(16, Math.min(W - SPRITE_W - 16, ped.x));
-    kike.x = Math.max(16, Math.min(W - SPRITE_W - 16, kike.x));
-
-    advanceSwing(ped, dt);
-    advanceSwing(kike, dt);
-    resolveSwingHit(ped, kike);
-    resolveSwingHit(kike, ped);
-
     if (ped.hp <= 0 && !ended && !window.GameState.state.infiniteLives) {
       ended = true;
       setTimeout(() => window.Loop.setScene('DEFEAT'), 900);
     } else if (ped.hp <= 0) {
-      ped.hp = PED_MAX_HP;
-    }
-    if (kike.hp <= 0 && !ended) {
-      ended = true;
-      window.Audio8.sfx('win');
-      window.Effects.explosion(kike.x + SPRITE_W / 2, kike.y - SPRITE_H / 2, { count: 28, speed: 130 });
-      setTimeout(() => window.Loop.setScene('VICTORY'), 1100);
+      ped.hp = PED_MAX_HP;  // vidas infinitas: regen
     }
   }
 
-  function startSwing(f) {
-    f.state = 'swinging';
-    f.swingT = 0;
-    f.swingHit = false;
-    f.attackCooldown = 0.7;
+  function advanceFighter(f, dt) {
+    f.thrustCd = Math.max(0, f.thrustCd - dt);
+    f.dodgeCd  = Math.max(0, f.dodgeCd  - dt);
+    f.stun     = Math.max(0, f.stun     - dt);
+    f.shake    = Math.max(0, f.shake    - dt);
+    if (f.state === 'thrusting') {
+      f.thrustT += dt;
+      if (f.thrustT >= THRUST_DUR) { f.state = 'idle'; f.thrustT = 0; f.thrustHit = false; }
+    }
+    if (f.state === 'dodging') {
+      f.dodgeT += dt;
+      if (f.dodgeT >= DODGE_DUR) { f.state = 'idle'; f.dodgeT = 0; }
+    }
+  }
+
+  function canAttack(f) { return f.state === 'idle' && f.thrustCd <= 0; }
+  function canDodge(f)  { return f.state === 'idle' && f.dodgeCd  <= 0; }
+
+  function startThrust(f) {
+    f.state = 'thrusting';
+    f.thrustT = 0;
+    f.thrustHit = false;
+    f.thrustCd = THRUST_COOLDOWN;
     window.Audio8.sfx('saber');
   }
 
-  function advanceSwing(f, dt) {
-    if (f.state !== 'swinging') return;
-    f.swingT += dt;
-    if (f.swingT >= SWING_DURATION) {
-      f.state = 'idle';
-      f.swingT = 0;
-      f.swingHit = false;
-    }
+  function startDodge(f) {
+    f.state = 'dodging';
+    f.dodgeT = 0;
+    f.dodgeDir = dodgeFlip;
+    dodgeFlip = -dodgeFlip;
+    f.dodgeCd = DODGE_COOLDOWN;
   }
 
-  function resolveSwingHit(attacker, target) {
-    if (attacker.state !== 'swinging' || attacker.swingHit) return;
-    if (attacker.swingT < SWING_HIT_AT) return;
-    const dist = Math.abs(attacker.x - target.x);
-    if (dist > ATTACK_RANGE) return;
+  // i-frames durante el pico del ladeo
+  function inIFrames(f) {
+    return f.state === 'dodging' && f.dodgeT >= DODGE_IFR_0 && f.dodgeT <= DODGE_IFR_1;
+  }
 
-    attacker.swingHit = true;
+  function resolveThrust(attacker, target) {
+    if (attacker.state !== 'thrusting' || attacker.thrustHit) return;
+    if (attacker.thrustT < THRUST_HIT0 || attacker.thrustT > THRUST_HIT1) return;
+    if (distance > THRUST_RANGE) return;
 
-    const midX = (attacker.x + target.x) / 2 + SPRITE_W / 2;
-    const midY = attacker.y - SPRITE_H * 0.55;
-
-    if (target.state === 'defending') {
-      // Parada: chispas brillantes
-      window.Audio8.sfx('saber');
-      attacker.stunned = 0.18;
-      attacker.shake = 0.15;
-      target.shake = 0.1;
-      target.x += -attacker.facing * 6;
-      window.Effects.sparks(midX, midY, {
-        count: 16, color: '#fff8c0', colorAlt: '#80e8ff', speed: 130, life: 0.4,
+    if (inIFrames(target)) {
+      attacker.thrustHit = true;
+      missFlash = 0.18;
+      // chispas suaves al filo del esquive
+      const screenPos = screenPosOf(target);
+      window.Effects.sparks(screenPos.cx, screenPos.cy, {
+        count: 10, color: '#9ce8ff', colorAlt: '#fff8c0', speed: 100, life: 0.32,
       });
       return;
     }
 
-    target.hp -= ATTACK_DAMAGE;
-    target.stunned = 0.35;
+    attacker.thrustHit = true;
+    target.hp -= 1;
+    target.stun = 0.32;
     target.shake = 0.3;
-    hitFlash = 0.35;
+    hitFlash = target === ped ? 0.35 : 0.18;
     window.Audio8.sfx('hit');
 
     if (target === ped) window.GameState.loseLife();
 
-    target.x += -attacker.facing * 10;
-    // chispas + polvo
-    window.Effects.sparks(midX, midY, { count: 14, color: '#ff9090', colorAlt: '#ffe080', speed: 110, life: 0.4 });
-    window.Effects.dust(target.x + SPRITE_W / 2, target.y, { count: 6, color: '#3a2840', colorAlt: '#5a4060', speed: 40 });
+    const sp = screenPosOf(target);
+    window.Effects.sparks(sp.cx, sp.cy, {
+      count: 14, color: '#ff9090', colorAlt: '#ffe080', speed: 110, life: 0.4,
+    });
+    window.Effects.dust(sp.cx, sp.cy + 6, {
+      count: 6, color: '#3a2840', colorAlt: '#5a4060', speed: 36,
+    });
   }
 
-  function updateAI(k, p, dt) {
-    if (k.stunned) return;
+  function updateAI(dt) {
+    const k = kike;
+    if (k.stun > 0) return;
     k.aiTimer += dt;
-    const dist = Math.abs(k.x - p.x);
-    k.moving = false;
 
-    if (dist > ATTACK_RANGE - 2) {
-      if (k.state !== 'swinging') {
-        k.state = 'idle';
-        k.x += k.facing * KIKE_SPEED * dt;
-        k.moving = true;
-      }
+    if (distance > THRUST_RANGE * 0.95) {
+      // Cierra distancia
+      if (k.state === 'idle') distance -= KIKE_SPEED * dt;
+      else if (k.state === 'thrusting') distance -= KIKE_SPEED * 0.25 * dt;
+      // ocasionalmente esquiva cuando Pedrito ataca, incluso de lejos
+      if (ped.state === 'thrusting' && canDodge(k) && Math.random() < 0.02) startDodge(k);
       return;
     }
 
-    if (k.state === 'defending') {
-      k.defendT -= dt;
-      if (k.defendT <= 0) k.state = 'idle';
+    // En rango: decisiones cada aiNext
+    if (k.state !== 'idle') return;
+    if (k.aiTimer < k.aiNext) {
+      // si Pedrito está atacando, sube prob. de esquivar de inmediato
+      if (ped.state === 'thrusting' && ped.thrustT < THRUST_HIT1 && canDodge(k) && Math.random() < 0.18) {
+        startDodge(k);
+      }
+      return;
     }
+    k.aiTimer = 0;
+    k.aiNext = 0.55 + Math.random() * 0.6;
+    const r = Math.random();
+    if (ped.state === 'thrusting') {
+      if (r < 0.7 && canDodge(k)) startDodge(k);
+      else if (canAttack(k)) startThrust(k);
+      else distance += 0.06;
+      return;
+    }
+    if (r < 0.55 && canAttack(k)) startThrust(k);
+    else if (r < 0.78 && canDodge(k)) startDodge(k);
+    else distance += 0.05; // pequeño retroceso
+  }
 
-    if (k.state !== 'swinging' && k.aiTimer >= k.aiNext) {
-      k.aiTimer = 0;
-      k.aiNext = 0.7 + Math.random() * 0.6;
-      const r = Math.random();
-      if (p.state === 'swinging') {
-        if (r < 0.55) { k.state = 'defending'; k.defendT = 0.45; }
-        else { k.x -= k.facing * 20; }
-        return;
-      }
-      if (r < 0.55 && k.attackCooldown <= 0) {
-        startSwing(k);
-      } else if (r < 0.8) {
-        k.state = 'defending';
-        k.defendT = 0.4;
-      } else {
-        k.x += k.facing * 14;
-      }
+  // --------- Posiciones en pantalla ---------
+  // depth: 0 = primer plano (Pedrito), 1 = lejos (Kike a max distance)
+  function depthToScreen(depth) {
+    const t = Math.max(0, Math.min(1, depth));
+    return FLOOR_BOTTOM + (FLOOR_TOP - FLOOR_BOTTOM) * t;
+  }
+  function depthToScale(depth) {
+    const t = Math.max(0, Math.min(1, depth));
+    return PED_SCALE * (1 - 0.62 * t);
+  }
+
+  function kikeDepth() {
+    return KIKE_DEPTH_NEAR + distance * (KIKE_DEPTH_FAR - KIKE_DEPTH_NEAR);
+  }
+
+  function screenPosOf(f) {
+    if (f === ped) {
+      const off = fighterOffset(f);
+      const sc = PED_SCALE;
+      const cx = W / 2 + off.dx;
+      const cy = PED_FEET_Y - 10 * sc + off.dy;
+      return { cx, cy, sc, depth: 0, feetY: PED_FEET_Y };
+    } else {
+      const d = kikeDepth();
+      const feetY = depthToScreen(d);
+      const sc = depthToScale(d);
+      const off = fighterOffset(f);
+      const cx = W / 2 + off.dx;
+      const cy = feetY - 10 * sc + off.dy;
+      return { cx, cy, sc, depth: d, feetY };
     }
   }
 
-  // ---------------- Render ----------------
+  function fighterOffset(f) {
+    if (f.state !== 'dodging') return { dx: 0, dy: 0, rot: 0 };
+    const p = f.dodgeT / DODGE_DUR;
+    const env = Math.sin(p * Math.PI);
+    // ladeo visible: la cara rota fuerte (∼45°) y el cuerpo se inclina poco
+    return {
+      dx: f.dodgeDir * 8 * env,
+      dy: 0,
+      rot: f.dodgeDir * 0.75 * env,
+    };
+  }
+
+  // --------- Render ---------
   function render(ctx) {
     drawBackground(ctx);
-    drawCharactersAndSabers(ctx);
+    drawCorridorFloor(ctx);
+    drawMarianBalcony(ctx);
+
+    // Kike (lejos) antes que Pedrito (cerca)
+    drawKikeFighter(ctx);
+    drawPedFighter(ctx);
+
     window.Effects.render(ctx);
     drawHUD(ctx);
     drawButtons(ctx);
 
+    if (missFlash > 0) {
+      ctx.fillStyle = `rgba(120,220,255,${(missFlash * 0.35).toFixed(2)})`;
+      ctx.fillRect(0, 0, W, H);
+    }
     if (hitFlash > 0) {
       ctx.fillStyle = `rgba(255,40,40,${(hitFlash * 0.55).toFixed(2)})`;
       ctx.fillRect(0, 0, W, H);
@@ -249,26 +350,26 @@
 
     if (ended && kike.hp <= 0) {
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(0, ARENA_Y - 70, W, 50);
+      ctx.fillRect(0, 220, W, 50);
       ctx.fillStyle = '#3aff60';
       ctx.font = '14px "Press Start 2P", monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('¡VICTORIA!', W / 2, ARENA_Y - 36);
+      ctx.fillText('¡VICTORIA!', W / 2, 252);
       ctx.textAlign = 'left';
     }
   }
 
   function drawBackground(ctx) {
-    // Gradiente vertical: morado oscuro arriba, casi negro al medio
+    // Gradiente: morado profundo arriba, casi negro abajo
     const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0,   '#15102a');
-    g.addColorStop(0.4, '#080812');
-    g.addColorStop(1,   '#040408');
+    g.addColorStop(0,   '#0f0a26');
+    g.addColorStop(0.35, '#070716');
+    g.addColorStop(1,    '#03030a');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
 
-    // Ventanal estrellado al fondo (marco metálico)
-    const winX = 30, winY = 28, winW = W - 60, winH = 160;
-    ctx.fillStyle = '#0a0a18';
+    // Ventanal en el fondo (encima del horizonte) con estrellas
+    const winX = 110, winY = 30, winW = 140, winH = 64;
+    ctx.fillStyle = '#06061a';
     ctx.fillRect(winX, winY, winW, winH);
     ctx.save();
     ctx.beginPath();
@@ -276,161 +377,258 @@
     ctx.clip();
     stars.render(ctx);
     ctx.restore();
-    // marco
     ctx.strokeStyle = '#3a3a4a';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 2;
     ctx.strokeRect(winX, winY, winW, winH);
-    // travesaños verticales
+    // travesaño central
     ctx.fillStyle = '#2a2a3a';
-    for (let i = 1; i < 4; i++) {
-      ctx.fillRect(winX + (winW / 4) * i - 1, winY, 2, winH);
-    }
-    ctx.fillRect(winX, winY + winH / 2 - 1, winW, 2);
+    ctx.fillRect(winX + winW / 2 - 1, winY, 2, winH);
 
-    // Pasarela donde está Marian
-    const wkX = W / 2 - 36;
-    const wkW = 72;
+    // Pared bajo el ventanal hasta el inicio del suelo
+    ctx.fillStyle = '#13131e';
+    ctx.fillRect(0, winY + winH, W, FLOOR_TOP - (winY + winH));
+    // banda metálica del horizonte
     ctx.fillStyle = '#22222e';
-    ctx.fillRect(wkX, winY + winH, wkW, 36);
+    ctx.fillRect(0, FLOOR_TOP - 4, W, 4);
     ctx.fillStyle = '#3a3a4a';
-    ctx.fillRect(wkX, winY + winH, wkW, 4);
+    ctx.fillRect(0, FLOOR_TOP - 1, W, 1);
+
+    // Luces rojas decorativas a los lados
+    for (let i = 0; i < 4; i++) {
+      const y = FLOOR_TOP + 24 + i * 80;
+      drawSideLight(ctx, 6,  y, plasmaT + i);
+      drawSideLight(ctx, W - 12, y, plasmaT + i + 0.5);
+    }
+  }
+
+  function drawSideLight(ctx, x, y, phase) {
+    const flicker = 0.7 + Math.sin(phase * 6) * 0.25;
+    ctx.save();
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, 20);
+    grad.addColorStop(0, `rgba(255,60,60,${(flicker * 0.7).toFixed(2)})`);
+    grad.addColorStop(1, 'rgba(255,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x - 20, y - 20, 40, 40);
+    ctx.fillStyle = `rgba(255,80,80,${flicker.toFixed(2)})`;
+    ctx.fillRect(x - 2, y - 3, 4, 6);
+    ctx.restore();
+  }
+
+  function drawCorridorFloor(ctx) {
+    // Pintar suelo: cuadrilátero entre punto de fuga y borde inferior
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(W / 2 - FAR_HALF_W, FLOOR_TOP);
+    ctx.lineTo(W / 2 + FAR_HALF_W, FLOOR_TOP);
+    ctx.lineTo(W / 2 + NEAR_HALF_W, FLOOR_BOTTOM);
+    ctx.lineTo(W / 2 - NEAR_HALF_W, FLOOR_BOTTOM);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, FLOOR_TOP, 0, FLOOR_BOTTOM);
+    grad.addColorStop(0, '#0d0d18');
+    grad.addColorStop(1, '#1c1c2a');
+    ctx.fillStyle = grad;
+    ctx.fill();
+    // Paredes laterales
+    ctx.fillStyle = '#0b0b16';
+    ctx.beginPath();
+    ctx.moveTo(0, FLOOR_TOP);
+    ctx.lineTo(W / 2 - FAR_HALF_W, FLOOR_TOP);
+    ctx.lineTo(W / 2 - NEAR_HALF_W, FLOOR_BOTTOM);
+    ctx.lineTo(0, FLOOR_BOTTOM);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(W, FLOOR_TOP);
+    ctx.lineTo(W / 2 + FAR_HALF_W, FLOOR_TOP);
+    ctx.lineTo(W / 2 + NEAR_HALF_W, FLOOR_BOTTOM);
+    ctx.lineTo(W, FLOOR_BOTTOM);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // Líneas verticales del suelo (convergen al VP)
+    ctx.strokeStyle = '#2a2a40';
+    ctx.lineWidth = 1;
+    for (const lane of [-0.66, -0.33, 0, 0.33, 0.66]) {
+      const x0 = W / 2 + lane * NEAR_HALF_W * 2;
+      const x1 = W / 2 + lane * FAR_HALF_W  * 2;
+      ctx.beginPath();
+      ctx.moveTo(x0, FLOOR_BOTTOM);
+      ctx.lineTo(x1, FLOOR_TOP);
+      ctx.stroke();
+    }
+    // Líneas horizontales (baldosas) — espaciado no uniforme para perspectiva
+    ctx.strokeStyle = '#3a3a50';
+    const STRIPES = [0.08, 0.18, 0.30, 0.45, 0.62, 0.82];
+    for (const t of STRIPES) {
+      const y = FLOOR_TOP + (FLOOR_BOTTOM - FLOOR_TOP) * t;
+      const half = FAR_HALF_W + (NEAR_HALF_W - FAR_HALF_W) * t;
+      ctx.beginPath();
+      ctx.moveTo(W / 2 - half, y);
+      ctx.lineTo(W / 2 + half, y);
+      ctx.stroke();
+    }
+
+    // Línea de plasma que marca el rango de la estocada (a la "y" de Kike
+    // cuando está justo en rango). Se ilumina al pulsar atacar.
+    const rangeDepth = KIKE_DEPTH_NEAR + THRUST_RANGE * (KIKE_DEPTH_FAR - KIKE_DEPTH_NEAR);
+    const rangeY = depthToScreen(rangeDepth);
+    const inRange = distance <= THRUST_RANGE;
+    const pulse = 0.5 + Math.sin(plasmaT * 5) * 0.5;
+    const halfRange = FAR_HALF_W + (NEAR_HALF_W - FAR_HALF_W) * (1 - rangeDepth);
+    ctx.save();
+    ctx.globalAlpha = inRange ? 0.7 + 0.3 * pulse : 0.25 + 0.15 * pulse;
+    ctx.strokeStyle = inRange ? '#5acbff' : '#2a4858';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(W / 2 - halfRange + 8, rangeY);
+    ctx.lineTo(W / 2 + halfRange - 8, rangeY);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawMarianBalcony(ctx) {
+    // Pasarela suspendida al lateral izquierdo, profundidad media (entre
+    // Pedrito y Kike). Vista frontal-ligeramente picada.
+    const x = MARIAN.x, fy = MARIAN.feetY, s = MARIAN.scale;
+    // soporte vertical
+    ctx.fillStyle = '#1a1a26';
+    ctx.fillRect(0, fy - 4, 56, 8);
+    ctx.fillStyle = '#3a3a4a';
+    ctx.fillRect(0, fy - 4, 56, 2);
+    ctx.fillStyle = '#0a0a16';
+    ctx.fillRect(0, fy + 4, 56, 4);
     // barandilla
     ctx.fillStyle = '#5a5a6a';
-    ctx.fillRect(wkX - 2,    winY + winH - 6, 2, 10);
-    ctx.fillRect(wkX + wkW,  winY + winH - 6, 2, 10);
+    ctx.fillRect(52, fy - 14, 2, 14);
+    ctx.fillRect(28, fy - 12, 2, 12);
+    ctx.fillRect(4,  fy - 14, 2, 14);
+    ctx.fillStyle = '#3a3a4a';
+    ctx.fillRect(0, fy - 14, 56, 2);
 
-    // Marian sobre la pasarela (sprite 14×20 × 1.6 ≈ 22×32, pies en winY+winH)
-    window.Characters.drawMarian(ctx, W / 2 - 7 * 1.6, winY + winH - 32, 1.6);
+    // Marian sobre la pasarela
+    const sprH = 20 * s;
+    const sprX = x;
+    const sprY = fy - sprH;
+    // Cuerpo + foto (mirando levemente a su izquierda hacia el centro = facing 1)
+    window.Characters.drawMarian(ctx, sprX, sprY, s, { facing: 1 });
+
+    // Etiqueta
     ctx.fillStyle = '#ffe81f';
     ctx.font = '7px "Press Start 2P", monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('MARIAN', W / 2, winY + winH - 30);
     ctx.textAlign = 'left';
-
-    // Pared / panel intermedio entre ventanal y suelo
-    ctx.fillStyle = '#15151f';
-    ctx.fillRect(0, winY + winH + 36, W, ARENA_Y - (winY + winH + 36) - 14);
-
-    // Columnas decorativas
-    ctx.fillStyle = '#22222e';
-    ctx.fillRect(20, winY + winH + 36, 10, ARENA_Y - winY - winH - 50);
-    ctx.fillRect(W - 30, winY + winH + 36, 10, ARENA_Y - winY - winH - 50);
-    ctx.fillStyle = '#3a3a4a';
-    ctx.fillRect(20, winY + winH + 36, 10, 3);
-    ctx.fillRect(W - 30, winY + winH + 36, 10, 3);
-
-    // Suelo de plasma (banda animada)
-    const floorY = ARENA_Y + 4;
-    ctx.fillStyle = '#1c1c2a';
-    ctx.fillRect(0, floorY, W, H - floorY);
-    // banda de plasma
-    const plasmaH = 6;
-    const plasmaY = floorY - 2;
-    const grad = ctx.createLinearGradient(0, plasmaY, 0, plasmaY + plasmaH);
-    const pulse = 0.5 + Math.sin(plasmaT * 4) * 0.2;
-    grad.addColorStop(0, `rgba(120,220,255,${(0.4 * pulse).toFixed(2)})`);
-    grad.addColorStop(0.5, '#5acbff');
-    grad.addColorStop(1, `rgba(40,140,200,${(0.4 * pulse).toFixed(2)})`);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, plasmaY, W, plasmaH);
-
-    // baldosas
-    ctx.fillStyle = '#2a2a3a';
-    for (let x = 0; x < W; x += 20) {
-      ctx.fillRect(x, floorY + 4, 14, 2);
-      ctx.fillRect(x, floorY + 18, 14, 2);
-    }
+    ctx.fillText('MARIAN', x - 2, fy + 18);
   }
 
-  function drawCharactersAndSabers(ctx) {
-    drawFighter(ctx, ped, '#3aff60', true);
-    drawFighter(ctx, kike, '#ff3a3a', false);
-  }
+  function drawPedFighter(ctx) {
+    const sc = PED_SCALE;
+    const sprW = 14 * sc;
+    const sprH = 20 * sc;
+    const baseX = W / 2 - sprW / 2;
+    const baseY = PED_FEET_Y - sprH;
+    const off = fighterOffset(ped);
 
-  function drawFighter(ctx, f, saberColor, isPed) {
-    ctx.save();
-
-    // Sombra elíptica bajo los pies
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    // sombra fija en el suelo (los pies no salen del sitio)
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.beginPath();
-    ctx.ellipse(f.x + SPRITE_W / 2, f.y + 2, SPRITE_W * 0.5, 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(W / 2, PED_FEET_Y + 4, sprW * 0.55, 5, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    if (f.shake > 0) ctx.translate((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4);
+    ctx.save();
+    if (ped.shake > 0) ctx.translate((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4);
+    ctx.translate(off.dx, off.dy);
 
-    // Pequeño bob al estar idle
-    const bobOffset = f.state === 'idle' && !f.moving ? Math.sin(bobT * 4) * 1 : 0;
-    const drawY = f.y - SPRITE_H + bobOffset;
-
-    // Frame: walk si se está moviendo
-    const frame = f.moving ? (Math.floor(walkAnim * 7) % 2 === 0 ? 'walk' : 'idle') : 'idle';
-
-    if (isPed) {
-      window.Characters.drawPedrito(ctx, f.x, drawY, FIGHTER_SCALE, frame);
-    } else {
-      window.Characters.drawKikeVader(ctx, f.x, drawY, FIGHTER_SCALE);
-    }
-
-    // Mano que sostiene el sable (a la altura del torso)
-    const handX = f.facing > 0 ? f.x + SPRITE_W - 4 : f.x + 4;
-    const handY = drawY + SPRITE_H * 0.55;
-
-    let theta;
-    const baseUp = -Math.PI / 4;
-    const fwd = 0;
-    const up = -Math.PI / 2;
-    if (f.state === 'defending') {
-      theta = up;
-    } else if (f.state === 'swinging') {
-      const p = Math.min(1, f.swingT / SWING_DURATION);
-      const k = p < 0.5 ? p / 0.5 : 1 - (p - 0.5) / 0.5;
-      theta = baseUp + (fwd - baseUp) * k;
-    } else {
-      theta = baseUp + Math.sin(bobT * 4) * 0.04; // leve oscilación idle
-    }
-
-    const len = 72;
-    let tipX, tipY;
-    if (f.facing > 0) {
-      tipX = handX + Math.cos(theta) * len;
-      tipY = handY + Math.sin(theta) * len;
-    } else {
-      tipX = handX - Math.cos(theta) * len;
-      tipY = handY + Math.sin(theta) * len;
-    }
-    window.Characters.drawSaber(ctx, handX, handY, tipX, tipY, saberColor);
-
-    // Escudo aurora al defender
-    if (f.state === 'defending') {
-      ctx.save();
-      const pulse = 0.5 + Math.sin(bobT * 10) * 0.2;
-      ctx.globalAlpha = 0.5 * pulse;
-      ctx.strokeStyle = saberColor;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(f.x + SPRITE_W / 2, drawY + SPRITE_H / 2, 28, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-    }
+    const bobOffset = ped.state === 'idle' ? Math.sin(bobT * 4) * 1 : 0;
+    window.Characters.drawPedrito(ctx, baseX, baseY + bobOffset, sc, 'idle', { rotation: off.rot });
+    drawThrustingSaber(ctx, ped, baseX + sprW * 0.78, baseY + sprH * 0.42 + bobOffset, sc, '#3aff60', /*upward*/ true);
 
     ctx.restore();
   }
 
+  function drawKikeFighter(ctx) {
+    const sp = screenPosOf(kike);
+    const sc = sp.sc;
+    const sprW = 14 * sc;
+    const sprH = 20 * sc;
+    const feetY = sp.feetY;
+    const baseX = W / 2 - sprW / 2;
+    const baseY = feetY - sprH;
+    const off = fighterOffset(kike);
+
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.beginPath();
+    ctx.ellipse(W / 2, feetY + 3, sprW * 0.55, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.save();
+    if (kike.shake > 0) ctx.translate((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3);
+    ctx.translate(off.dx, off.dy);
+
+    const bobOffset = kike.state === 'idle' ? Math.sin(bobT * 4 + 1.2) * 1 : 0;
+    window.Characters.drawKikeVader(ctx, baseX, baseY + bobOffset, sc, { rotation: off.rot });
+    drawThrustingSaber(ctx, kike, baseX + sprW * 0.22, baseY + sprH * 0.42 + bobOffset, sc, '#ff3a3a', /*upward*/ false);
+
+    ctx.restore();
+  }
+
+  // Sable en perspectiva vertical: empuñadura en (hx, hy), hoja en dirección
+  // upward(+ — hacia arriba) o downward(- — hacia abajo). En thrust, alargamos
+  // bruscamente la hoja. En idle se mantiene una longitud relajada con leve
+  // inclinación lateral.
+  // El sable tiene longitud fija (no escala con la profundidad del cuerpo) —
+  // Kike, aunque se vea más pequeño por estar lejos, conserva un sable largo,
+  // como los de Star Wars. Así la estocada visualmente llega de un combatiente
+  // al otro a pesar de la perspectiva.
+  function drawThrustingSaber(ctx, f, hx, hy, scale, color, upward) {
+    let len = 50;
+    let lateral = 0;
+
+    if (f.state === 'thrusting') {
+      const p = Math.min(1, f.thrustT / THRUST_DUR);
+      const env = p < 0.35 ? (p / 0.35) : (1 - (p - 0.35) / 0.65);
+      len = len + env * 120;
+    } else if (f.state === 'dodging') {
+      len *= 0.7;
+      lateral = f.dodgeDir * 10;
+    } else {
+      lateral = Math.sin(bobT * 3 + (f === kike ? 0.7 : 0)) * 3;
+    }
+
+    const dir = upward ? -1 : 1;
+    const tipX = hx + lateral;
+    const tipY = hy + dir * len;
+
+    window.Characters.drawSaber(ctx, hx, hy, tipX, tipY, color);
+  }
+
+  // --------- HUD + botones ---------
   function drawHUD(ctx) {
     drawHpBar(ctx, 16, 14, 130, 10, ped.hp / ped.maxHp, '#3aff60', 'PEDRITO');
     drawHpBar(ctx, W - 146, 14, 130, 10, kike.hp / kike.maxHp, '#ff3a3a', 'K. VADER', true);
     window.NarrativeHUD.drawLives(ctx, W / 2 - 18, 30);
+
+    // Indicador de distancia (columna derecha): arriba = en alcance (cerca de
+    // Kike), abajo = lejos. Marca azul = umbral de la estocada.
+    const barX = W - 18, barY = 50, barH = 200;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(barX - 1, barY - 1, 8, barH + 2);
+    ctx.fillStyle = '#0c0c14';
+    ctx.fillRect(barX, barY, 6, barH);
+    const rangeY = barY + barH * THRUST_RANGE;
+    ctx.fillStyle = '#5acbff';
+    ctx.fillRect(barX - 2, rangeY - 1, 10, 2);
+    const cursorY = barY + distance * barH;
+    ctx.fillStyle = '#ffe81f';
+    ctx.fillRect(barX - 2, cursorY - 2, 10, 3);
   }
 
   function drawHpBar(ctx, x, y, w, h, pct, color, label, alignRight) {
-    // marco
     ctx.fillStyle = '#000';
     ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
     ctx.fillStyle = '#3a3a4a';
     ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
     ctx.fillStyle = '#0c0c14';
     ctx.fillRect(x, y, w, h);
-    // fill
     const fillW = Math.max(0, w * pct);
     if (alignRight) {
       ctx.fillStyle = color;
@@ -443,7 +641,6 @@
       ctx.fillStyle = 'rgba(255,255,255,0.25)';
       ctx.fillRect(x, y, fillW, 2);
     }
-    // etiqueta
     ctx.fillStyle = '#fff';
     ctx.font = '7px "Press Start 2P", monospace';
     ctx.textAlign = alignRight ? 'right' : 'left';
@@ -460,23 +657,18 @@
     const color = colorFor(b, isHeld);
     ctx.save();
     ctx.globalAlpha = isHeld ? 1 : 0.78;
-    // base oscura
     ctx.fillStyle = '#0a0a14';
     ctx.fillRect(b.x, b.y, b.w, b.h);
-    // highlight superior
     ctx.fillStyle = '#1a1a2a';
     ctx.fillRect(b.x, b.y, b.w, 4);
-    // borde grueso
     ctx.lineWidth = 3;
     ctx.strokeStyle = color;
     ctx.strokeRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
-    // segundo borde interno
     ctx.lineWidth = 1;
     ctx.strokeStyle = 'rgba(255,255,255,0.15)';
     ctx.strokeRect(b.x + 4, b.y + 4, b.w - 8, b.h - 8);
-    // texto
     ctx.fillStyle = color;
-    ctx.font = (b.label.length <= 2 ? '22px' : '11px') + ' "Press Start 2P", monospace';
+    ctx.font = (b.label.length <= 2 ? '24px' : '10px') + ' "Press Start 2P", monospace';
     ctx.textAlign = 'center';
     ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2 + 8);
     ctx.textAlign = 'left';
@@ -485,10 +677,10 @@
 
   function colorFor(b, isHeld) {
     switch (b.id) {
-      case 'back': return isHeld ? '#ffffff' : '#bbbbcc';
-      case 'fwd':  return isHeld ? '#ffffff' : '#bbbbcc';
-      case 'def':  return isHeld ? '#9ce8ff' : '#4a8fa8';
-      case 'atk':  return isHeld ? '#ffe080' : '#a0801a';
+      case 'fwd':   return isHeld ? '#ffffff' : '#bbbbcc';
+      case 'back':  return isHeld ? '#ffffff' : '#bbbbcc';
+      case 'dodge': return isHeld ? '#9ce8ff' : '#4a8fa8';
+      case 'atk':   return isHeld ? '#ffe080' : '#a0801a';
     }
     return '#fff';
   }

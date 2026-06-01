@@ -65,11 +65,11 @@
     if (window.Input.isKey('ArrowRight')) player.x += 180 * dt;
     player.x = Math.max(4, Math.min(W - PLAYER_W - 4, player.x));
 
-    // Estela de propulsor: dos partículas por frame
+    // Estela de propulsor desde la trasera del Manitou (parte inferior).
     if (thrustT > 0.02) {
       thrustT = 0;
-      window.Effects.thrust(player.x + 5,            player.y + PLAYER_H - 2, '#ff8030');
-      window.Effects.thrust(player.x + PLAYER_W - 6, player.y + PLAYER_H - 2, '#ff8030');
+      window.Effects.thrust(player.x + 6,            player.y + PLAYER_H,     '#ff8030');
+      window.Effects.thrust(player.x + PLAYER_W - 6, player.y + PLAYER_H,     '#ff8030');
     }
 
     // Disparo automático + tap manual
@@ -164,6 +164,18 @@
     }
   }
 
+  function drawPlayer(ctx) {
+    if (window.Vehicles && window.Vehicles.isReady()) {
+      const w = 48;
+      const h = w * window.Vehicles.aspect();
+      const cx = player.x + PLAYER_W / 2;
+      const cy = player.y + PLAYER_H - h / 2;
+      window.Vehicles.drawManitouTop(ctx, cx, cy, w);
+    } else {
+      window.Characters.drawXwing(ctx, player.x, player.y, 2);
+    }
+  }
+
   function shoot() {
     if (bullets.length > 4) return;
     bullets.push({ x: player.x + PLAYER_W / 2, y: player.y - 4 });
@@ -212,8 +224,10 @@
     }
     ctx.restore();
 
-    // X-wing
-    window.Characters.drawXwing(ctx, player.x, player.y, 2);
+    // Pedrito en su Manitou (la nave del regalo). Hitbox es PLAYER_W×PLAYER_H;
+    // el sprite es más alto, con los pinchos apuntando hacia los cazas (arriba)
+    // y la trasera alineada con la parte inferior de la hitbox.
+    drawPlayer(ctx);
 
     // Partículas (delante del jugador para ver thrust)
     window.Effects.render(ctx);

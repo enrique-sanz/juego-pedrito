@@ -93,9 +93,28 @@
     '.oBBo....oBBo.',
   ];
 
-  function drawPedrito(ctx, x, y, scale, frame) {
+  // Filas 0..8 de cada sprite son la cabeza pixel-art; cuando la foto real
+  // está cargada, se omiten esas filas (solo se pinta cuerpo) y se superpone
+  // la foto enmascarada con Faces.drawHead. La constante HEAD_BODY_ROW es la
+  // primera fila del sprite que pertenece al cuerpo.
+  const HEAD_BODY_ROW = 9;
+
+  function drawFaceOver(ctx, who, x, y, scale, wCols, cyRows, opts) {
+    if (!window.Faces || !window.Faces.isReady(who)) return false;
+    const cx = x + 7 * scale;          // centro horizontal del sprite 14 wide
+    const cy = y + cyRows * scale;
+    return window.Faces.drawHead(ctx, who, cx, cy, wCols * scale, opts);
+  }
+
+  function drawPedrito(ctx, x, y, scale, frame, opts) {
     const lines = frame === 'walk' ? PEDRITO_WALK : PEDRITO_IDLE;
-    drawPixels(ctx, x, y, scale, lines, PEDRITO_PALETTE);
+    if (window.Faces && window.Faces.isReady('pedrito')) {
+      const body = lines.slice(HEAD_BODY_ROW);
+      drawPixels(ctx, x, y + HEAD_BODY_ROW * scale, scale, body, PEDRITO_PALETTE);
+      drawFaceOver(ctx, 'pedrito', x, y, scale, 12, 5.2, opts);
+    } else {
+      drawPixels(ctx, x, y, scale, lines, PEDRITO_PALETTE);
+    }
   }
 
   // ============ MARIAN ============
@@ -142,8 +161,14 @@
     '....a....a....',
   ];
 
-  function drawMarian(ctx, x, y, scale) {
-    drawPixels(ctx, x, y, scale, MARIAN_IDLE, MARIAN_PALETTE);
+  function drawMarian(ctx, x, y, scale, opts) {
+    if (window.Faces && window.Faces.isReady('marian')) {
+      const body = MARIAN_IDLE.slice(HEAD_BODY_ROW);
+      drawPixels(ctx, x, y + HEAD_BODY_ROW * scale, scale, body, MARIAN_PALETTE);
+      drawFaceOver(ctx, 'marian', x, y, scale, 13, 5.2, opts);
+    } else {
+      drawPixels(ctx, x, y, scale, MARIAN_IDLE, MARIAN_PALETTE);
+    }
   }
 
   // ============ KIKE VADER ============
@@ -184,8 +209,14 @@
     '..oBBo..oBBo..',
   ];
 
-  function drawKikeVader(ctx, x, y, scale) {
-    drawPixels(ctx, x, y, scale, KIKE_IDLE, KIKE_PALETTE);
+  function drawKikeVader(ctx, x, y, scale, opts) {
+    if (window.Faces && window.Faces.isReady('kike')) {
+      const body = KIKE_IDLE.slice(HEAD_BODY_ROW);
+      drawPixels(ctx, x, y + HEAD_BODY_ROW * scale, scale, body, KIKE_PALETTE);
+      drawFaceOver(ctx, 'kike', x, y, scale, 13, 5.2, opts);
+    } else {
+      drawPixels(ctx, x, y, scale, KIKE_IDLE, KIKE_PALETTE);
+    }
   }
 
   // ============ SABLE LÁSER ============

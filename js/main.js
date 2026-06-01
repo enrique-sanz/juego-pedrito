@@ -8,6 +8,8 @@
     const overlay = document.getElementById('start-overlay');
 
     window.Input.bind(canvas, canvas.width, canvas.height);
+    window.Faces.init();
+    window.Vehicles.init();
     window.Debug.init(canvas);
     window.Loop.start(canvas);
 
