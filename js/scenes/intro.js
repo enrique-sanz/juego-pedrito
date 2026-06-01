@@ -1,11 +1,14 @@
-// Crawl introductorio estilo Star Wars: texto subiendo con perspectiva sobre
-// un fondo estrellado. Se carga el texto desde story/intro.txt.
+// Crawl introductorio estilo Star Wars con punto de fuga real en el borde
+// superior, fondo de nebulosa y estrellas en parallax (2 capas).
 (function () {
   'use strict';
 
   const W = 360, H = 640;
-  let stars, lines, scrollY, finished, fetchedOnce;
-  let logoAlpha, logoScale;
+
+  let starsFar, starsNear;
+  let nebula;
+  let lines, scrollY, finished, fetchedOnce;
+  let logoAlpha, t;
 
   const FALLBACK = [
     'Hace mucho tiempo, en una galaxia',
@@ -14,27 +17,36 @@
     'EPISODIO PEDRITO',
     '',
     'KIKE VADER amenaza con besar a',
-    'MARIAN si no es detenido. Solo',
-    'PEDRITO puede salvarla.',
+    'MARIAN si nadie es capaz de',
+    'detenerlo. Solo PEDRITO puede',
+    'salvar a su amada.',
     '',
-    'Que la Fuerza le acompañe.',
+    'Armado con su sable y un corazón',
+    'valiente, cruzará flotas enemigas,',
+    'trincheras imposibles y trampas',
+    'mortales para enfrentarse cara',
+    'a cara con el villano.',
+    '',
+    'Que la Fuerza... y un buen Manitou,',
+    'le acompañen.',
   ];
 
   function enter() {
-    stars = window.Stars.createField({ width: W, height: H, count: 80, speed: 12 });
+    starsFar  = window.Stars.createField({ width: W, height: H, count: 60, speed: 4 });
+    starsNear = window.Stars.createField({ width: W, height: H, count: 25, speed: 14 });
+    nebula = buildNebula();
     lines = FALLBACK.slice();
-    scrollY = H + 40;
+    // El crawl arranca con todas las líneas debajo del borde inferior.
+    scrollY = H + 80;
     finished = false;
     logoAlpha = 1;
-    logoScale = 1;
+    t = 0;
     fetchedOnce = false;
     loadStory();
     window.Audio8.startTheme();
   }
 
   function exit() {
-    // El tema sigue sonando durante NARRATIVE_1 hasta el primer minijuego,
-    // pero lo cortamos aquí para evitar solaparlo con SFX en gameplay.
     window.Audio8.stopTheme();
   }
 
@@ -49,21 +61,39 @@
       .catch(() => { /* fallback ya cargado */ });
   }
 
+  function buildNebula() {
+    // Manchas de nebulosa estáticas (precomputadas) para no allocate en runtime
+    const blobs = [];
+    const palette = ['#1b1042', '#3a1660', '#7a2255', '#2b1a55'];
+    for (let i = 0; i < 8; i++) {
+      blobs.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        r: 80 + Math.random() * 160,
+        c: palette[(Math.random() * palette.length) | 0],
+        a: 0.10 + Math.random() * 0.12,
+      });
+    }
+    return blobs;
+  }
+
   function update(dt) {
-    stars.update(dt);
+    t += dt;
+    starsFar.update(dt);
+    starsNear.update(dt);
 
-    // Logo se desvanece tras un par de segundos
-    if (logoAlpha > 0) logoAlpha = Math.max(0, logoAlpha - dt * 0.5);
+    if (logoAlpha > 0) logoAlpha = Math.max(0, logoAlpha - dt * 0.4);
 
-    // Velocidad del crawl
-    const speed = 22;
+    // Velocidad del crawl: lo suficientemente lenta para leer
+    const speed = 26;
     scrollY -= speed * dt;
-    const totalHeight = lines.length * 22;
-    if (scrollY < -totalHeight - 50) {
+
+    // El crawl termina cuando la ÚLTIMA línea ha pasado por el punto de fuga.
+    const lastBaseY = scrollY + (lines.length - 1) * BASE_LINE_H;
+    if (lastBaseY < VP_Y - 4) {
       finished = true;
     }
 
-    // Permitir saltarse la intro con tap o tecla
     if (window.Input.actionJustPressed()) {
       finished = true;
     }
@@ -73,57 +103,82 @@
     }
   }
 
-  function render(ctx) {
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, W, H);
-    stars.render(ctx);
+  const VP_Y = -24;          // punto de fuga (encima del borde superior)
+  const BOTTOM_REF = H;       // posición de referencia para escala 1.0
+  const BASE_LINE_H = 26;
 
-    // Logo amarillo "EPISODIO PEDRITO"
+  function render(ctx) {
+    // Fondo negro espacial
+    ctx.fillStyle = '#020208';
+    ctx.fillRect(0, 0, W, H);
+
+    // Nebulosa difusa
+    ctx.save();
+    for (const b of nebula) {
+      const grad = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r);
+      grad.addColorStop(0, b.c);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalAlpha = b.a;
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+    }
+    ctx.restore();
+
+    // Estrellas (parallax)
+    starsFar.render(ctx);
+    starsNear.render(ctx);
+
+    // Logo inicial: "Una galaxia lejana..."
     if (logoAlpha > 0) {
       ctx.save();
       ctx.globalAlpha = logoAlpha;
-      ctx.fillStyle = '#ffe81f';
-      ctx.font = '20px "Press Start 2P", monospace';
+      ctx.fillStyle = '#71b8ff';
+      ctx.font = '12px "Press Start 2P", monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('UNA GALAXIA', W / 2, H / 2 - 24);
-      ctx.fillText('LEJANA...', W / 2, H / 2 + 8);
+      ctx.fillText('Hace mucho tiempo, en una', W / 2, H / 2 - 8);
+      ctx.fillText('galaxia muy, muy lejana...', W / 2, H / 2 + 12);
       ctx.restore();
     }
 
-    // Crawl con perspectiva: las líneas más cercanas a la cima se hacen más
-    // pequeñas. Usamos un transform de tipo "1 / (1 + y/k)".
+    // Crawl con perspectiva real: punto de fuga en VP_Y, escala = (y-VP)/(BOTTOM-VP).
+    // Las líneas se renderizan desde la más cercana (abajo) a la más lejana
+    // (arriba), por lo que al llegar al punto de fuga quedan minúsculas pero
+    // siguen visibles hasta desaparecer.
     ctx.save();
-    ctx.fillStyle = '#ffe81f';
     ctx.textAlign = 'center';
 
-    const lineH = 22;
     for (let i = 0; i < lines.length; i++) {
-      const baseY = scrollY + i * lineH;
-      if (baseY < -lineH || baseY > H + lineH) continue;
-
-      // Coordenada normalizada respecto al horizonte (alto = H * 0.35)
-      const horizon = H * 0.4;
-      const rel = (baseY - horizon) / (H - horizon);
+      const baseY = scrollY + i * BASE_LINE_H;
+      if (baseY > H + BASE_LINE_H) continue;
+      const rel = (baseY - VP_Y) / (BOTTOM_REF - VP_Y);
       if (rel <= 0.02) continue;
-      const scale = Math.min(1.2, Math.max(0.1, rel));
+      const scale = Math.min(1.25, rel);
+      const alpha = Math.min(1, rel * 1.6);
 
       ctx.save();
       ctx.translate(W / 2, baseY);
-      ctx.scale(scale, scale * 0.9);
-      ctx.globalAlpha = Math.min(1, rel * 1.6);
-      ctx.font = '14px "Press Start 2P", monospace';
+      ctx.scale(scale, scale * 0.92);
+      ctx.globalAlpha = alpha;
       ctx.fillStyle = '#ffe81f';
-      ctx.fillText(lines[i], 0, 0);
+      ctx.font = '14px "Press Start 2P", monospace';
+      ctx.fillText(lines[i] || ' ', 0, 0);
+      // Sombra suave bajo el texto para dar volumen
+      ctx.globalAlpha = alpha * 0.25;
+      ctx.fillStyle = '#7a6a10';
+      ctx.fillText(lines[i] || ' ', 0, 2);
       ctx.restore();
     }
     ctx.restore();
 
-    // Sugerencia de tap
+    // Marca para saltar la intro (apenas visible, no estorba)
     ctx.save();
-    ctx.fillStyle = 'rgba(255,232,31,0.6)';
-    ctx.font = '8px "Press Start 2P", monospace';
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = '#ffe81f';
+    ctx.font = '7px "Press Start 2P", monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('TOCA PARA SALTAR', W / 2, H - 16);
+    if (Math.floor(t * 1.4) % 2 === 0) {
+      ctx.fillText('TOCA O ENTER PARA SALTAR', W / 2, H - 10);
+    }
     ctx.restore();
   }
 

@@ -1,5 +1,7 @@
-// Dibujo por código de los personajes y vehículos. Centralizado para sustituir
-// cómodamente por sprites/imágenes reales cuando el usuario las proporcione.
+// Dibujo por código de personajes, vehículos y elementos retro estilo 16-bit
+// (SNES/Genesis). Paletas más amplias con sombreados, fotogramas alternativos
+// para animar idle/walk. Centralizado para sustituir por sprites importados
+// el día que el usuario aporte imágenes.
 (function () {
   'use strict';
 
@@ -8,8 +10,8 @@
     ctx.fillRect(x | 0, y | 0, w, h);
   }
 
-  // Pixel-art helper: dibuja una matriz de píxeles definida como string.
-  // `.` = transparente. Cualquier otro caracter usa el mapeo `palette[char]`.
+  // Dibuja una matriz de píxeles (array de strings). '.' = transparente.
+  // Cualquier otro caracter usa el mapeo `palette[char]`.
   function drawPixels(ctx, x, y, scale, lines, palette) {
     for (let row = 0; row < lines.length; row++) {
       const line = lines[row];
@@ -22,197 +24,360 @@
     }
   }
 
-  // -------- PEDRITO --------
-  // Cara redonda, pelo castaño, túnica Jedi marrón claro, sable verde.
-  const PEDRITO_PIXELS = [
-    '..hhhhhh..',
-    '.hhcccchh.',
-    '.hccccccc.',
-    '.cffccffc.',  // ojos
-    '.cccccccc.',
-    '.cccmmccc.',  // boca
-    '..cccccc..',
-    'bbttttttbb',  // hombros túnica
-    'btttttttbb',
-    'btttbbtttb',
-    'tttbbbbttt',
-    '.tt.bb.tt.',
-    '..t.bb.t..',
-    '....bb....',
-  ];
+  // ============ PEDRITO ============
+  // Sprite 14×20. Paleta amplia: piel base + highlight + shadow, pelo en dos
+  // tonos, túnica Jedi en tres tonos, cinturón y botas. Variaciones de
+  // piernas para una pequeña animación de paso.
   const PEDRITO_PALETTE = {
-    h: '#5a2f12', // pelo
-    c: '#f1c27d', // piel
-    f: '#1d1d1d', // ojos
-    m: '#7a2c1e', // boca
-    t: '#a76a3a', // túnica
-    b: '#6e3f1a', // detalle túnica
+    o: '#2a1408',  // outline oscuro
+    h: '#3a1f0a',  // pelo base
+    H: '#6c3a18',  // pelo highlight
+    c: '#f1c27d',  // piel base
+    C: '#fad6a0',  // piel highlight
+    s: '#bf8a4a',  // piel sombra
+    F: '#0c0c0c',  // pupila
+    W: '#ffffff',  // blanco ojo
+    m: '#8a2a1e',  // boca
+    M: '#c44a35',  // boca highlight
+    t: '#a76a3a',  // túnica mid
+    T: '#cc8a52',  // túnica highlight
+    b: '#6e3f1a',  // túnica shadow
+    g: '#3a2a14',  // cinturón
+    G: '#d8a830',  // hebilla cinturón
+    B: '#1d1208',  // bota
   };
 
-  function drawPedrito(ctx, x, y, scale = 2, facing = 'front') {
-    drawPixels(ctx, x, y, scale, PEDRITO_PIXELS, PEDRITO_PALETTE);
+  const PEDRITO_IDLE = [
+    '....oooooo....',
+    '...oHHHHHHo...',
+    '..oHhcccchHo..',
+    '..oHccccccHo..',
+    '..ocCCCCCCco..',
+    '..ocFWccWFco..',
+    '..occsccsccc..',
+    '..occcmMmccc..',
+    '...occccccco..',
+    '..ogtttttto...',
+    '..otTTtTTTto..',
+    '..otTbtbTtto..',
+    '..otTbtbTtto..',
+    '..ogggGGgggo..',
+    '..otTbbbbTto..',
+    '..otTbbbbTto..',
+    '...tt....tt...',
+    '...tt....tt...',
+    '...BB....BB...',
+    '..oBBo..oBBo..',
+  ];
+
+  const PEDRITO_WALK = [
+    '....oooooo....',
+    '...oHHHHHHo...',
+    '..oHhcccchHo..',
+    '..oHccccccHo..',
+    '..ocCCCCCCco..',
+    '..ocFWccWFco..',
+    '..occsccsccc..',
+    '..occcmMmccc..',
+    '...occccccco..',
+    '..ogtttttto...',
+    '..otTTtTTTto..',
+    '..otTbtbTtto..',
+    '..otTbtbTtto..',
+    '..ogggGGgggo..',
+    '..otTbbbbTto..',
+    '...tTbbbbTt...',
+    '..ttt....tt...',
+    '..tt......tt..',
+    '..BB......BB..',
+    '.oBBo....oBBo.',
+  ];
+
+  function drawPedrito(ctx, x, y, scale, frame) {
+    const lines = frame === 'walk' ? PEDRITO_WALK : PEDRITO_IDLE;
+    drawPixels(ctx, x, y, scale, lines, PEDRITO_PALETTE);
   }
 
-  // -------- MARIAN --------
-  // Pelo largo claro, vestido azul, cara dulce.
-  const MARIAN_PIXELS = [
-    '..gggggg..',
-    '.ggggcccg.',
-    'gcccccccc.',
-    'gcffccffcg',
-    'gcccccccc.',
-    'gcccmmccc.',
-    '.gccccccg.',
-    '.aaaaaaaa.',
-    'aaaaaaaaaa',
-    'aaaaaaaaaa',
-    'aabbbbaaaa',  // detalle vestido
-    '.aaaaaaaa.',
-    '.aa....aa.',
-    '..a....a..',
-  ];
+  // ============ MARIAN ============
+  // Pelo rubio largo, vestido azul con detalle dorado. Misma altura.
   const MARIAN_PALETTE = {
-    g: '#d8b85e', // pelo rubio
-    c: '#fcd8a8',
-    f: '#1d1d1d',
-    m: '#b03a52',
-    a: '#3866b8', // vestido azul
-    b: '#2147a2',
+    o: '#241510',
+    g: '#a07a30',  // pelo sombra
+    G: '#e6c060',  // pelo base
+    Y: '#fae08a',  // pelo highlight
+    c: '#fad0a8',
+    C: '#ffe7c8',
+    s: '#c98a64',
+    F: '#0c0c0c',
+    W: '#ffffff',
+    m: '#b04050',
+    M: '#e06070',
+    a: '#3866b8',  // vestido mid
+    A: '#6a96e0',  // vestido highlight
+    b: '#244a92',  // vestido shadow
+    d: '#e8c248',  // detalle dorado
+    L: '#fff0a8',  // collar
   };
 
-  function drawMarian(ctx, x, y, scale = 2) {
-    drawPixels(ctx, x, y, scale, MARIAN_PIXELS, MARIAN_PALETTE);
-  }
-
-  // -------- KIKE VADER --------
-  // Casco oscuro estilo Vader, capa negra. Aún sin imagen real.
-  const KIKE_PIXELS = [
-    '..kkkkkk..',
-    '.kkkkkkkk.',
-    'kkkrrrrkkk',  // ojos rojos
-    'kkrrrrrrkk',
-    'kkkkkkkkkk',
-    'kkkkkkkkkk',
-    'kkkwkwwkwk',  // rejilla bucal
-    '.kkkkkkkk.',
-    'cckkkkkkcc',
-    'ccckkkkccc',
-    'ccccccccc.',
-    '.ccc..ccc.',
-    '..cc..cc..',
-    '..cc..cc..',
+  const MARIAN_IDLE = [
+    '...oGGGGGGo...',
+    '..oGYYYYYYGo..',
+    '.oGYccccccYGo.',
+    '.oGcccccccYGo.',
+    '.oGcCCCCcccGo.',
+    '.oGcFWccWFcGo.',
+    '.oGccsccsccGo.',
+    '.oGcccmMmccGo.',
+    '..GccccccccG..',
+    '..oLLLLLLLLo..',
+    '..oAAaaaaAAo..',
+    '..oAabbbbaAo..',
+    '..oAabddbaAo..',
+    '..oAabddbaAo..',
+    '..oAaabaaaAo..',
+    '..oAaabaaaAo..',
+    '..oaaabaaaao..',
+    '..oaaabaaaao..',
+    '...aaa..aaa...',
+    '....a....a....',
   ];
-  const KIKE_PALETTE = {
-    k: '#161616',
-    r: '#ff2a2a',
-    w: '#999',
-    c: '#2a2a2a',
-  };
 
-  function drawKikeVader(ctx, x, y, scale = 2) {
-    drawPixels(ctx, x, y, scale, KIKE_PIXELS, KIKE_PALETTE);
+  function drawMarian(ctx, x, y, scale) {
+    drawPixels(ctx, x, y, scale, MARIAN_IDLE, MARIAN_PALETTE);
   }
 
-  // -------- SABLE LÁSER --------
+  // ============ KIKE VADER ============
+  // Casco al estilo Vader con visor, capa con sombras, botas.
+  const KIKE_PALETTE = {
+    o: '#000000',
+    k: '#1a1a1a',  // casco base
+    K: '#3a3a3a',  // casco highlight
+    r: '#ff2a2a',  // visor
+    R: '#ff7070',  // visor brillo
+    w: '#9a9a9a',  // detalle metálico
+    c: '#101010',  // capa
+    C: '#2a2a2a',  // capa highlight
+    b: '#5a1a1a',  // detalle rojo
+    B: '#1a0810',
+  };
+
+  const KIKE_IDLE = [
+    '....oookooo...',
+    '...okKKKKKKko.',
+    '..okKKKKKKKKo.',
+    '..okKKrrrrKKo.',
+    '..okrrRRRRrro.',
+    '..okrrRRRRrro.',
+    '..oKKKKwwKKKo.',
+    '..okwkwwwwkwo.',
+    '...oKKKKKKKo..',
+    '..ocKKKKKKKco.',
+    '.oCcKKKKKKcCo.',
+    '.oCccKKKKccCo.',
+    '.oCccbbbbccCo.',
+    '.oCcCcccccCCo.',
+    '.oCCCccccCCCo.',
+    '..oCcccccCo...',
+    '..oCcc..cCo...',
+    '..ocBc..cBco..',
+    '..oBBo..oBBo..',
+    '..oBBo..oBBo..',
+  ];
+
+  function drawKikeVader(ctx, x, y, scale) {
+    drawPixels(ctx, x, y, scale, KIKE_IDLE, KIKE_PALETTE);
+  }
+
+  // ============ SABLE LÁSER ============
   function drawSaber(ctx, x1, y1, x2, y2, color) {
     ctx.save();
     ctx.lineCap = 'round';
-    // Glow exterior
+
+    // Glow exterior amplio (2 pasadas para halo)
+    ctx.globalAlpha = 0.18;
     ctx.strokeStyle = color;
-    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = 14;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.42;
     ctx.lineWidth = 8;
     ctx.beginPath();
     ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
     ctx.stroke();
-    // Núcleo blanco
+
+    // Hoja coloreada
     ctx.globalAlpha = 1;
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 5;
     ctx.beginPath();
     ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
     ctx.stroke();
-    // Empuñadura
-    ctx.strokeStyle = '#aaa';
-    ctx.lineWidth = 4;
+
+    // Núcleo blanco
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(x1, y1);
+    ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+    ctx.stroke();
+
+    // Empuñadura metálica
     const dx = x1 - x2, dy = y1 - y2;
     const len = Math.hypot(dx, dy) || 1;
-    ctx.lineTo(x1 + dx / len * 8, y1 + dy / len * 8);
+    const ux = dx / len, uy = dy / len;
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x1 + ux * 8, y1 + uy * 8);
     ctx.stroke();
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x1 + ux * 8, y1 + uy * 8);
+    ctx.lineTo(x1 + ux * 12, y1 + uy * 12);
+    ctx.stroke();
+
     ctx.restore();
   }
 
-  // -------- NAVE DE PEDRITO (X-wing simplificado) --------
-  function drawXwing(ctx, x, y, scale = 2) {
+  // ============ X-WING (Pedrito) ============
+  // 12×10 con detalles de cañones, cabina y motores.
+  const XWING_PALETTE = {
+    o: '#000000',
+    w: '#d6d6d6',
+    W: '#ffffff',
+    g: '#7a7a7a',
+    G: '#a0a0a0',
+    b: '#ff4040',  // marcas rebeldes
+    c: '#3aa0ff',  // cabina
+    C: '#9adcff',  // cabina brillo
+    e: '#ffae40',  // motor
+    E: '#ffe080',  // motor highlight
+  };
+
+  const XWING_FRAME = [
+    '....oWWo....',
+    '....oWWo....',
+    '..oogWWgoo..',
+    '.oggWWWWggo.',
+    'oggGcCcGggo.',
+    'oggGWWWWGggo',
+    'oeegWWWWgee.',
+    '.oeggWWggeo.',
+    '..oewwwweo..',
+    '....oEEo....',
+  ];
+
+  function drawXwing(ctx, x, y, scale) {
+    drawPixels(ctx, x, y, scale, XWING_FRAME, XWING_PALETTE);
+  }
+
+  // ============ CAZA TIE ============
+  const TIE_PALETTE = {
+    o: '#000000',
+    h: '#3a3a3a',
+    H: '#5a5a5a',
+    w: '#9d9d9d',
+    W: '#cdcdcd',
+    c: '#ff3030',
+    g: '#2a2a2a',
+  };
+
+  const TIE_FRAME = [
+    'o.....o',
+    'hH...Hh',
+    'hHwWWwHh',
+    'HwWcWwH',
+    'hHwWWwHh',
+    'hH...Hh',
+    'o.....o',
+  ];
+
+  function drawTie(ctx, x, y, scale) {
+    drawPixels(ctx, x, y, scale, TIE_FRAME, TIE_PALETTE);
+  }
+
+  // ============ HEART (vidas) ============
+  function drawHeart(ctx, x, y, scale, full) {
+    const palette = full
+      ? { r: '#ff3a4a', R: '#ff8a8a', d: '#8a1828', o: '#3a0612' }
+      : { r: '#3a2030', R: '#5a3848', d: '#1a1018', o: '#0a0006' };
     const lines = [
-      '....w....',
-      '...www...',
-      '..wwwww..',
-      'g.wwbww.g',
-      'gggwwwggg',
-      'g.wwwww.g',
-      '...www...',
-      '..w.w.w..',
+      '.orro.orro.',
+      'oRrRroRrRro',
+      'oRrrrrrrrRo',
+      'oRrrrrrrrRo',
+      '.oRrrrrrRo.',
+      '..oRrrrRo..',
+      '...oRRo....',
+      '....oo.....',
     ];
-    const palette = { w: '#d6d6d6', g: '#888', b: '#ff4040' };
     drawPixels(ctx, x, y, scale, lines, palette);
   }
 
-  // -------- CAZA TIE --------
-  function drawTie(ctx, x, y, scale = 2) {
-    const lines = [
-      'h.....h',
-      'h.www.h',
-      'hwwwwwh',
-      'h.www.h',
-      'h.....h',
-    ];
-    const palette = { h: '#444', w: '#9d9d9d' };
-    drawPixels(ctx, x, y, scale, lines, palette);
-  }
+  // ============ MANITOU (mini-excavadora) ============
+  // Cabina amarilla, brazo articulado en dos segmentos según armAngle.
+  function drawManitou(ctx, x, y, scale, armAngle) {
+    const s = scale;
 
-  // -------- MANITOU (mini-excavadora) --------
-  // Vista lateral muy simplificada con cabina amarilla, brazo articulado y pala.
-  function drawManitou(ctx, x, y, scale = 2, armAngle = 0.4) {
-    // Cuerpo / chasis
-    fillRect(ctx, x, y + 18 * scale, 28 * scale, 6 * scale, '#1a1a1a');
-    // Ruedas
-    fillRect(ctx, x + 2 * scale, y + 24 * scale, 6 * scale, 4 * scale, '#222');
-    fillRect(ctx, x + 20 * scale, y + 24 * scale, 6 * scale, 4 * scale, '#222');
-    // Cabina amarilla
-    fillRect(ctx, x + 6 * scale, y + 8 * scale, 16 * scale, 10 * scale, '#f5c518');
+    // Chasis
+    fillRect(ctx, x,            y + 18 * s, 30 * s, 6 * s, '#1a1a1a');
+    fillRect(ctx, x,            y + 24 * s, 30 * s, 2 * s, '#000000');
+
+    // Sombras debajo del chasis
+    fillRect(ctx, x - 2 * s,    y + 26 * s, 34 * s, 2 * s, 'rgba(0,0,0,0.35)');
+
+    // Ruedas (3 pequeñas)
+    drawWheel(ctx, x + 2 * s,  y + 22 * s, s);
+    drawWheel(ctx, x + 13 * s, y + 22 * s, s);
+    drawWheel(ctx, x + 24 * s, y + 22 * s, s);
+
+    // Cabina (amarilla brillante)
+    fillRect(ctx, x + 5 * s, y + 6 * s,  18 * s, 12 * s, '#f5c518');
+    fillRect(ctx, x + 5 * s, y + 6 * s,  18 * s, 2 * s,  '#fce370'); // highlight superior
+    fillRect(ctx, x + 5 * s, y + 17 * s, 18 * s, 1 * s,  '#a0780c'); // sombra inferior
     // Cristal
-    fillRect(ctx, x + 9 * scale, y + 10 * scale, 10 * scale, 5 * scale, '#7ad7f0');
-    // Logo
-    fillRect(ctx, x + 8 * scale, y + 16 * scale, 4 * scale, 1 * scale, '#000');
+    fillRect(ctx, x + 8 * s,  y + 8 * s,  11 * s, 6 * s, '#52b8d8');
+    fillRect(ctx, x + 8 * s,  y + 8 * s,  11 * s, 1 * s, '#a8e8ff'); // reflejo
+    // Marco cristal
+    fillRect(ctx, x + 8 * s,  y + 8 * s,  1 * s, 6 * s, '#1c1c1c');
+    fillRect(ctx, x + 18 * s, y + 8 * s,  1 * s, 6 * s, '#1c1c1c');
+    fillRect(ctx, x + 8 * s,  y + 14 * s, 11 * s, 1 * s, '#1c1c1c');
+    // "MANITOU"
+    fillRect(ctx, x + 7 * s,  y + 16 * s, 14 * s, 1 * s, '#000000');
 
-    // Brazo articulado: dos segmentos según armAngle
+    // Brazo articulado
     ctx.save();
-    ctx.translate(x + 22 * scale, y + 14 * scale);
+    ctx.translate(x + 22 * s, y + 12 * s);
     ctx.rotate(-armAngle);
-    fillRect(ctx, 0, -1 * scale, 18 * scale, 2 * scale, '#f5c518');
-    ctx.translate(18 * scale, 0);
+    fillRect(ctx, 0, -1 * s, 18 * s, 3 * s, '#f5c518');
+    fillRect(ctx, 0, -1 * s, 18 * s, 1 * s, '#fce370');
+    fillRect(ctx, 0, 2 * s,  18 * s, 1 * s, '#a0780c');
+
+    ctx.translate(18 * s, 0);
+    // pivote
+    fillRect(ctx, -1 * s, -2 * s, 3 * s, 4 * s, '#222');
     ctx.rotate(armAngle * 1.3);
-    fillRect(ctx, 0, -1 * scale, 12 * scale, 2 * scale, '#f5c518');
-    // Pala (cuchara) al final
-    ctx.translate(12 * scale, 0);
-    fillRect(ctx, -1 * scale, -2 * scale, 5 * scale, 6 * scale, '#a0a0a0');
+    fillRect(ctx, 0, -1 * s, 12 * s, 3 * s, '#f5c518');
+    fillRect(ctx, 0, -1 * s, 12 * s, 1 * s, '#fce370');
+    fillRect(ctx, 0, 2 * s,  12 * s, 1 * s, '#a0780c');
+
+    ctx.translate(12 * s, 0);
+    // Pala/cuchara
+    fillRect(ctx, -1 * s, -3 * s, 6 * s, 7 * s, '#9a9a9a');
+    fillRect(ctx, -1 * s, -3 * s, 6 * s, 1 * s, '#d0d0d0');
+    fillRect(ctx, -1 * s,  3 * s, 6 * s, 1 * s, '#5a5a5a');
+    fillRect(ctx,  4 * s, -3 * s, 1 * s, 7 * s, '#5a5a5a');
+
     ctx.restore();
   }
 
-  // -------- CORAZÓN (UI vidas) --------
-  function drawHeart(ctx, x, y, scale = 1, full = true) {
-    const color = full ? '#ff2a2a' : '#403030';
-    const lines = [
-      '.rr.rr.',
-      'rrrrrrr',
-      'rrrrrrr',
-      '.rrrrr.',
-      '..rrr..',
-      '...r...',
-    ];
-    drawPixels(ctx, x, y, scale, lines, { r: color });
+  function drawWheel(ctx, cx, cy, s) {
+    fillRect(ctx, cx - 3 * s, cy - 3 * s, 6 * s, 6 * s, '#1a1a1a');
+    fillRect(ctx, cx - 2 * s, cy - 2 * s, 4 * s, 4 * s, '#3a3a3a');
+    fillRect(ctx, cx - 1 * s, cy - 1 * s, 2 * s, 2 * s, '#1a1a1a');
   }
 
   window.Characters = {
