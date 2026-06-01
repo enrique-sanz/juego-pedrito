@@ -54,7 +54,7 @@
 
   // Botones
   const BTN_SIZE = 78;
-  const BTN_Y = H - BTN_SIZE - 14;
+  const BTN_Y = H - BTN_SIZE - 44;
   const BTN_LEFT_X = 12;
   const BTN_RIGHT_X = W - BTN_SIZE - 12;
   const BTN_ACT_X = (W - BTN_SIZE) / 2;
@@ -63,11 +63,11 @@
 
   function enter() {
     cols = [
-      ['ramp', 'ramp'],   // suministro de rampas (debe quedar vacío)
-      ['ramp'],
+      ['ramp', 'sq'],          // rampa enterrada: hay que retirar el cuadrado de encima
+      ['sq'],
       ['sq', 'ramp'],
-      ['sq', 'sq'],
-      ['sq', 'sq', 'sq'],
+      ['sq', 'ramp'],
+      ['sq', 'sq', 'ramp'],
     ];
     manitouCol = 1;
     facing = 1;
@@ -462,14 +462,14 @@
 
     const pct = Math.max(0, Math.min(1, (ceilY - C_TOP_LIMIT) / (CEIL_LOSE_Y - C_TOP_LIMIT)));
     ctx.fillStyle = '#000';
-    ctx.fillRect(38, H - BTN_SIZE - 30, W - 76, 10);
+    ctx.fillRect(38, BTN_Y - 16, W - 76, 10);
     ctx.fillStyle = '#3a3a4a';
-    ctx.fillRect(40, H - BTN_SIZE - 28, W - 80, 6);
+    ctx.fillRect(40, BTN_Y - 14, W - 80, 6);
     ctx.fillStyle = pct > 0.7 ? '#ff3030' : pct > 0.4 ? '#ffae40' : '#7af0a8';
-    ctx.fillRect(40, H - BTN_SIZE - 28, (W - 80) * pct, 6);
+    ctx.fillRect(40, BTN_Y - 14, (W - 80) * pct, 6);
     ctx.fillStyle = '#ffe81f';
     ctx.font = '6px "Press Start 2P", monospace';
-    ctx.fillText('TECHO', W / 2, H - BTN_SIZE - 36);
+    ctx.fillText('TECHO', W / 2, BTN_Y - 22);
   }
 
   function drawButtons(ctx) {
