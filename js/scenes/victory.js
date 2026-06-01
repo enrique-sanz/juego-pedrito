@@ -177,17 +177,18 @@
     const phase = PHASES[phaseIdx];
     if (phase.name === 'credits') {
       ctx.fillStyle = 'rgba(0,0,0,0.65)';
-      ctx.fillRect(0, 70, W, 120);
+      ctx.fillRect(0, 65, W, 138);
       ctx.fillStyle = '#ffe81f';
       ctx.font = '16px "Press Start 2P", monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('¡FELICIDADES!', W / 2, 110);
+      ctx.fillText('¡FELICIDADES!', W / 2, 105);
       ctx.font = '10px "Press Start 2P", monospace';
-      ctx.fillText('PEDRITO HA SALVADO', W / 2, 140);
-      ctx.fillText('A MARIAN', W / 2, 158);
+      ctx.fillText('PEDRITO SKYWALKER',   W / 2, 132);
+      ctx.fillText('HA SALVADO A LA',     W / 2, 150);
+      ctx.fillText('PRINCESA MARIAN',     W / 2, 168);
       ctx.font = '8px "Press Start 2P", monospace';
       ctx.fillStyle = '#fff';
-      if (Math.floor(t * 2) % 2 === 0) ctx.fillText('TOCA O ENTER PARA REPETIR', W / 2, 184);
+      if (Math.floor(t * 2) % 2 === 0) ctx.fillText('TOCA O ENTER PARA REPETIR', W / 2, 194);
       ctx.textAlign = 'left';
     }
   }

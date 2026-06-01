@@ -112,7 +112,10 @@
 
     ctx.font = '8px "Press Start 2P", monospace';
     ctx.fillStyle = '#fff';
-    if (phase >= 1) ctx.fillText('KIKE VADER BESÓ A MARIAN', W / 2, 170);
+    if (phase >= 1) {
+      ctx.fillText('KIKE VADER BESÓ A',  W / 2, 168);
+      ctx.fillText('LA PRINCESA MARIAN', W / 2, 182);
+    }
     if (phase >= 2) {
       ctx.fillStyle = '#ffe81f';
       if (Math.floor(t * 2) % 2 === 0) {

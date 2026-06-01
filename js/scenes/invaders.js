@@ -166,7 +166,7 @@
 
   function drawPlayer(ctx) {
     if (window.Vehicles && window.Vehicles.isReady()) {
-      const w = 48;
+      const w = 96;
       const h = w * window.Vehicles.aspect();
       const cx = player.x + PLAYER_W / 2;
       const cy = player.y + PLAYER_H - h / 2;

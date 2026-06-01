@@ -347,7 +347,8 @@
     ctx.fillStyle = '#ffe81f';
     ctx.font = '7px "Press Start 2P", monospace';
     ctx.textAlign = 'left';
-    ctx.fillText('MARIAN', x - 2, fy + 18);
+    ctx.fillText('PRINCESA', x - 2, fy + 18);
+    ctx.fillText('MARIAN',  x - 2, fy + 28);
   }
 
   function drawPedFighter(ctx) {
@@ -409,7 +410,7 @@
 
   // --- HUD + botones ---
   function drawHUD(ctx) {
-    drawHpBar(ctx, 16, 14, 130, 10, ped.hp / ped.maxHp, '#3aff60', 'PEDRITO');
+    drawHpBar(ctx, 16, 14, 130, 10, ped.hp / ped.maxHp, '#3aff60', 'P. SKYWALKER');
     drawHpBar(ctx, W - 146, 14, 130, 10, kike.hp / kike.maxHp, '#ff3a3a', 'K. VADER', true);
     window.NarrativeHUD.drawLives(ctx, W / 2 - 18, 30);
   }
