@@ -120,7 +120,61 @@
       const rows = o.headRow != null ? o.headRow : cyRows;
       cy = y + rows * scale;
     }
-    return window.Faces.drawHead(ctx, who, cx, cy, w, opts);
+    const drew = window.Faces.drawHead(ctx, who, cx, cy, w, opts);
+    if (drew && o.wounds) {
+      drawFaceWounds(ctx, cx, cy, w, w * window.Faces.aspectOf(who));
+    }
+    return drew;
+  }
+
+  // Overlay de heridas de combate sobre la foto-cabeza (ojo morado, sangre en
+  // la nariz, rasguños y dientes rotos). `cx,cy` es el CENTRO de la cabeza.
+  function drawFaceWounds(ctx, cx, cy, w, h) {
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // La cara real ocupa la franja central-baja del recuadro (ojos ~centro,
+    // nariz +0.07h, boca +0.17h), así que las heridas se anclan ahí.
+
+    // Ojo morado (contusión) sobre el ojo izquierdo en pantalla
+    const eyeX = cx - w * 0.10, eyeY = cy - h * 0.03;
+    ctx.fillStyle = 'rgba(86,40,110,0.5)';
+    ctx.beginPath();
+    ctx.ellipse(eyeX, eyeY, w * 0.10, h * 0.06, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(34,18,78,0.4)';
+    ctx.beginPath();
+    ctx.ellipse(eyeX, eyeY + h * 0.025, w * 0.07, h * 0.04, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Sangre que cae de la nariz
+    ctx.strokeStyle = '#b3121b';
+    ctx.lineWidth = Math.max(1.4, w * 0.03);
+    const noseX = cx - w * 0.02, noseY = cy + h * 0.07;
+    ctx.beginPath(); ctx.moveTo(noseX, noseY); ctx.lineTo(noseX - w * 0.02, noseY + h * 0.10); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(noseX + w * 0.04, noseY - h * 0.005); ctx.lineTo(noseX + w * 0.045, noseY + h * 0.07); ctx.stroke();
+    ctx.fillStyle = '#b3121b';
+    ctx.beginPath(); ctx.arc(noseX - w * 0.02, noseY + h * 0.11, w * 0.022, 0, Math.PI * 2); ctx.fill();
+
+    // Rasguños (zarpazo) en la mejilla derecha en pantalla
+    ctx.strokeStyle = '#c81e1e';
+    ctx.lineWidth = Math.max(1, w * 0.02);
+    for (let i = 0; i < 3; i++) {
+      const sx = cx + w * (0.09 + i * 0.035), sy = cy - h * 0.01;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + w * 0.05, sy + h * 0.11);
+      ctx.stroke();
+    }
+
+    // Dientes rotos: huecos oscuros sobre la sonrisa
+    ctx.fillStyle = 'rgba(20,8,4,0.65)';
+    const mouthY = cy + h * 0.16;
+    ctx.fillRect(cx - w * 0.025, mouthY, w * 0.035, h * 0.035);
+    ctx.fillRect(cx + w * 0.04, mouthY + h * 0.006, w * 0.025, h * 0.03);
+
+    ctx.restore();
   }
 
   function drawPedrito(ctx, x, y, scale, frame, opts) {

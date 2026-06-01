@@ -135,24 +135,29 @@
     // Marian
     window.Characters.drawMarian(ctx, marianX, marianY - 40, 2);
 
-    // Kike Vader
+    // Kike Vader (derrotado: con heridas de combate)
     if (!kikeInHole) {
-      window.Characters.drawKikeVader(ctx, kikeX, kikeY - 40, 2);
+      window.Characters.drawKikeVader(ctx, kikeX, kikeY - 40, 2, { wounds: true });
     } else if (holeDepth > 2) {
       ctx.save();
       ctx.beginPath();
       ctx.rect(W * 0.52, H - 160, 60, holeDepth + 14);
       ctx.clip();
-      window.Characters.drawKikeVader(ctx, W * 0.52 + 4, H - 170, 1.8);
+      window.Characters.drawKikeVader(ctx, W * 0.52 + 4, H - 170, 1.8, { wounds: true });
       ctx.restore();
     }
 
     // Manitou
-    window.Characters.drawManitou(ctx, manitouX, H - 200, 2, armAngle);
+    const manitouY = H - 200;
+    window.Characters.drawManitou(ctx, manitouX, manitouY, 2, armAngle);
 
-    // Pedrito
+    // Pedrito al volante: barbilla anclada al techo de la cabina (techo en
+    // manitouY + 6*scale = manitouY + 12) para que la cara no flote.
     if (pedOnManitou) {
-      window.Characters.drawPedrito(ctx, manitouX + 22, H - 240, 1.4, 'idle');
+      const pedScale = 1.4;
+      const roofY = manitouY + 12;
+      const pedY = roofY - 9 * pedScale; // 9 = fila cuello (HEAD_BODY_ROW)
+      window.Characters.drawPedrito(ctx, manitouX + 18, pedY, pedScale, 'idle', { anchorChin: true });
     } else {
       window.Characters.drawPedrito(ctx, hugX, hugY - 40, 2, 'idle');
       // corazoncito flotante
