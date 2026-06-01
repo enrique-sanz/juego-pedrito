@@ -1,7 +1,10 @@
 // Carga las fotos reales de Pedrito, Marian y Kike y las recorta a su silueta
-// real usando un polígono trazado a mano sobre cada foto (en coordenadas de
-// la PNG redimensionada). Es más fiable que un flood-fill porque las fotos
-// reales tienen gradientes continuos piel↔fondo que hacen leakear el fill.
+// real con:
+//   1) Un polígono trazado a mano sobre cada PNG fuente (densidad ~30-36
+//      puntos siguiendo pelo, mejillas, mentón y barba).
+//   2) Para Marian, un color-key conservador adicional dentro del polígono
+//      que limpia el fondo morado oscuro entre los rizos del pelo (donde la
+//      línea recta del polígono no puede seguir cada bucle).
 //
 // El motor renderiza con imageSmoothingEnabled=false (look pixel-art). En el
 // draw activamos suavizado temporal para que la cara no salga blocky al
@@ -9,32 +12,56 @@
 (function () {
   'use strict';
 
-  // Polígonos en coords de la PNG fuente (orden horario). Capturan la
-  // silueta exterior: pelo + cara + cuello donde aplique.
+  // Polígonos en coordenadas de la PNG fuente (orden horario, cierre implícito).
   const DEFS = {
     pedrito: {
       src: 'assets/faces/pedrito.png',
       poly: [
-        [95, 12], [135, 18], [158, 38], [165, 75], [162, 115],
-        [155, 145], [135, 178], [95, 200], [55, 178], [32, 145],
-        [25, 115], [24, 75], [32, 38], [55, 18],
+        [55, 14], [68, 8], [82, 4], [95, 3], [108, 4], [122, 8], [135, 13],
+        [146, 19], [155, 28],
+        [162, 42], [167, 58], [170, 76], [170, 92], [168, 108],
+        [165, 125], [160, 142],
+        [152, 160], [140, 178], [125, 192], [108, 200], [95, 202],
+        [82, 200], [68, 192], [50, 178], [38, 160],
+        [30, 142], [25, 125], [22, 108], [20, 92], [22, 76], [25, 58],
+        [30, 42], [37, 28], [44, 19],
       ],
+      colorKey: null,
     },
     marian: {
       src: 'assets/faces/marian.png',
+      // Polígono ligeramente generoso. El colorKey limpia el morado oscuro
+      // entre los rizos del pelo.
       poly: [
-        [110, 10], [155, 15], [175, 35], [185, 70], [180, 110],
-        [170, 145], [155, 175], [130, 195], [115, 200], [95, 195],
-        [70, 175], [55, 145], [45, 110], [40, 70], [50, 35], [75, 15],
+        [113, 8], [125, 5], [138, 7], [150, 12], [162, 18],
+        [172, 28], [180, 42], [186, 58], [190, 76],
+        [193, 96], [191, 116], [186, 138], [180, 158],
+        [170, 176], [158, 190],
+        [142, 200], [125, 207], [113, 210], [100, 207], [85, 200],
+        [70, 190], [58, 176], [48, 158], [40, 138],
+        [35, 116], [33, 96], [36, 76], [40, 58], [46, 42],
+        [54, 28], [64, 18], [75, 12], [87, 7], [100, 5],
       ],
+      colorKey: 'purple',
     },
     kike: {
       src: 'assets/faces/kike.png',
       poly: [
-        [90, 5], [158, 25], [165, 60], [160, 90], [155, 125],
-        [140, 155], [130, 185], [115, 210], [90, 222], [65, 210],
-        [50, 185], [35, 155], [20, 125], [15, 90], [10, 60], [15, 25],
+        [78, 3], [95, 3], [110, 5], [125, 10], [138, 15],
+        [150, 22], [158, 35],
+        [163, 55], [165, 72],
+        [162, 86], [155, 94],
+        [150, 108], [153, 125], [150, 145],
+        [140, 170], [133, 190], [120, 210],
+        [105, 222], [88, 228], [70, 222],
+        [52, 210], [38, 190], [30, 170],
+        [20, 145], [15, 125], [18, 108],
+        [10, 94], [3, 86],
+        [3, 72], [5, 55],
+        [12, 35], [20, 22],
+        [30, 13], [45, 7], [62, 3],
       ],
+      colorKey: null,
     },
   };
 
@@ -51,7 +78,7 @@
       cache[who] = { canvas: null, ready: false };
       const img = new Image();
       img.onload = () => {
-        try { cache[who] = buildSilhouette(img, def.poly); }
+        try { cache[who] = buildSilhouette(img, def.poly, def.colorKey); }
         catch (_) { cache[who] = { canvas: null, ready: false }; }
         loaded++; if (loaded === total) ready = true;
       };
@@ -60,11 +87,7 @@
     }
   }
 
-  // 1) Calcula bbox del polígono (con margen).
-  // 2) Crea canvas de ese tamaño, traduce el contexto al origen del bbox,
-  //    clipea con el polígono, y dibuja la imagen entera.
-  // 3) Resultado: silueta limpia, recortada a su bounding box.
-  function buildSilhouette(img, poly) {
+  function buildSilhouette(img, poly, colorKey) {
     const W = img.naturalWidth || img.width;
     const H = img.naturalHeight || img.height;
     let minX = W, maxX = 0, minY = H, maxY = 0;
@@ -87,7 +110,7 @@
     c.height = ch;
     const cx = c.getContext('2d');
 
-    // Polígono trasladado al origen del bbox
+    // Aplica clip del polígono y dibuja la imagen trasladada al origen del bbox
     cx.save();
     cx.beginPath();
     for (let i = 0; i < poly.length; i++) {
@@ -98,12 +121,32 @@
     }
     cx.closePath();
     cx.clip();
-
-    // Dibujo de la foto trasladada para que su (minX, minY) caiga en (0,0)
     cx.drawImage(img, -minX, -minY);
     cx.restore();
 
+    // Color-key opcional para limpiar bleed dentro del polígono
+    if (colorKey) {
+      const id = cx.getImageData(0, 0, cw, ch);
+      const d = id.data;
+      const test = colorKey === 'purple' ? isPurpleBg : null;
+      if (test) {
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i + 3] === 0) continue;
+          if (test(d[i], d[i + 1], d[i + 2])) d[i + 3] = 0;
+        }
+        cx.putImageData(id, 0, 0);
+      }
+    }
+
     return { canvas: c, ready: true, w: cw, h: ch };
+  }
+
+  // Morado MUY oscuro y desaturado del fondo de la foto de Marian. Muy
+  // restrictivo para no comerse piel rosada ni pelo castaño.
+  function isPurpleBg(r, g, b) {
+    if (r < 90 && g < 75 && b > g + 12) return true;
+    if (r < 60 && g < 50 && b > 30)     return true;
+    return false;
   }
 
   function drawHead(ctx, who, cx, cy, w, opts) {

@@ -111,7 +111,7 @@
     if (window.Faces && window.Faces.isReady('pedrito')) {
       const body = lines.slice(HEAD_BODY_ROW);
       drawPixels(ctx, x, y + HEAD_BODY_ROW * scale, scale, body, PEDRITO_PALETTE);
-      drawFaceOver(ctx, 'pedrito', x, y, scale, 18, 4, opts);
+      drawFaceOver(ctx, 'pedrito', x, y, scale, 26, 3, opts);
     } else {
       drawPixels(ctx, x, y, scale, lines, PEDRITO_PALETTE);
     }
@@ -165,7 +165,7 @@
     if (window.Faces && window.Faces.isReady('marian')) {
       const body = MARIAN_IDLE.slice(HEAD_BODY_ROW);
       drawPixels(ctx, x, y + HEAD_BODY_ROW * scale, scale, body, MARIAN_PALETTE);
-      drawFaceOver(ctx, 'marian', x, y, scale, 19.5, 4, opts);
+      drawFaceOver(ctx, 'marian', x, y, scale, 28, 3, opts);
     } else {
       drawPixels(ctx, x, y, scale, MARIAN_IDLE, MARIAN_PALETTE);
     }
@@ -213,7 +213,7 @@
     if (window.Faces && window.Faces.isReady('kike')) {
       const body = KIKE_IDLE.slice(HEAD_BODY_ROW);
       drawPixels(ctx, x, y + HEAD_BODY_ROW * scale, scale, body, KIKE_PALETTE);
-      drawFaceOver(ctx, 'kike', x, y, scale, 19.5, 4, opts);
+      drawFaceOver(ctx, 'kike', x, y, scale, 28, 3, opts);
     } else {
       drawPixels(ctx, x, y, scale, KIKE_IDLE, KIKE_PALETTE);
     }
