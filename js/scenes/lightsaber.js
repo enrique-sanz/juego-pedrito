@@ -38,7 +38,7 @@
   const THRUST_COOLDOWN = 0.55;
 
   const PED_MAX_HP  = 6;
-  const KIKE_MAX_HP = 8;
+  const KIKE_MAX_HP = 16;
 
   // Plataforma de Marian (sigue siendo lateral izquierda, profundidad media)
   const MARIAN = { x: 12, feetY: 332, scale: 1.5 };

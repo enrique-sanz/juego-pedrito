@@ -59,16 +59,26 @@
   const BTN_RIGHT_X = W - BTN_SIZE - 12;
   const BTN_ACT_X = (W - BTN_SIZE) / 2;
 
-  let prevL = false, prevR = false, prevAct = false;
+  // Botón de reset (restablece el puzle al orden inicial sin volver a la intro)
+  const RESET_W = 92, RESET_H = 24;
+  const RESET_X = W - RESET_W - 8;
+  const RESET_Y = 70;            // por debajo de la zona de triple-tap de debug
 
-  function enter() {
-    cols = [
+  let prevL = false, prevR = false, prevAct = false, prevReset = false;
+
+  // Orden inicial de los escombros (rampa enterrada en la col 0).
+  function initialCols() {
+    return [
       ['ramp', 'sq'],          // rampa enterrada: hay que retirar el cuadrado de encima
       ['sq'],
       ['sq', 'ramp'],
       ['sq', 'ramp'],
       ['sq', 'sq', 'ramp'],
     ];
+  }
+
+  function enter() {
+    cols = initialCols();
     manitouCol = 1;
     facing = 1;
     holding = null;
@@ -82,8 +92,25 @@
     exiting = false; exitT = 0;
     manitouXVisual = colCenterX(manitouCol);
     manitouYVisual = surfaceY(manitouCol);
-    prevL = prevR = prevAct = false;
+    prevL = prevR = prevAct = prevReset = false;
     window.Effects.reset();
+  }
+
+  // Restablece el puzle al orden inicial (escombros, posición y techo) sin
+  // perder vida ni volver a la intro. Para cuando el jugador se queda bloqueado.
+  function resetPuzzle() {
+    cols = initialCols();
+    manitouCol = 1;
+    facing = 1;
+    holding = null;
+    ceilY = C_TOP_LIMIT;
+    liftAnim = 0; dropAnim = 0;
+    shakeT = 0;
+    exiting = false; exitT = 0;
+    manitouXVisual = colCenterX(manitouCol);
+    manitouYVisual = surfaceY(manitouCol);
+    window.Effects.reset();
+    window.Audio8.sfx('hit');
   }
 
   // ----- helpers de pila -----
@@ -160,14 +187,21 @@
     const left  = pressedLeft(p);
     const right = pressedRight(p);
     const act   = pressedAct(p);
+    const reset = pressedReset(p);
     if (left && !prevL) press(-1);
     if (right && !prevR) press(+1);
     if (act && !prevAct) doAction();
-    prevL = left; prevR = right; prevAct = act;
+    if (reset && !prevReset) resetPuzzle();
+    prevL = left; prevR = right; prevAct = act; prevReset = reset;
   }
 
   function inBtn(p, bx) {
     return p.isDown && p.x >= bx && p.x <= bx + BTN_SIZE && p.y >= BTN_Y && p.y <= BTN_Y + BTN_SIZE;
+  }
+  function pressedReset(p) {
+    const inReset = p.isDown && p.x >= RESET_X && p.x <= RESET_X + RESET_W &&
+                    p.y >= RESET_Y && p.y <= RESET_Y + RESET_H;
+    return inReset || window.Input.isKey('KeyR');
   }
   function pressedLeft(p)  { return inBtn(p, BTN_LEFT_X)  || window.Input.isKey('ArrowLeft'); }
   function pressedRight(p) { return inBtn(p, BTN_RIGHT_X) || window.Input.isKey('ArrowRight'); }
@@ -475,6 +509,24 @@
     drawBtn(ctx, BTN_RIGHT_X, '→', false);
     const label = actionLabel();
     drawBtn(ctx, BTN_ACT_X, label, label === '—');
+    drawResetBtn(ctx);
+  }
+
+  function drawResetBtn(ctx) {
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(RESET_X, RESET_Y, RESET_W, RESET_H);
+    ctx.globalAlpha = 0.85;
+    ctx.strokeStyle = '#ffae40';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(RESET_X + 1, RESET_Y + 1, RESET_W - 2, RESET_H - 2);
+    ctx.fillStyle = '#ffae40';
+    ctx.font = '8px "Press Start 2P", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('↺ RESET', RESET_X + RESET_W / 2, RESET_Y + RESET_H / 2 + 1);
+    ctx.restore();
   }
 
   function drawBtn(ctx, x, label, disabled) {
