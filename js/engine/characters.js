@@ -213,38 +213,10 @@
     if (window.Faces && window.Faces.isReady('kike')) {
       const body = KIKE_IDLE.slice(HEAD_BODY_ROW);
       drawPixels(ctx, x, y + HEAD_BODY_ROW * scale, scale, body, KIKE_PALETTE);
-      const wCols = 28, cyRows = 3;
-      const w = wCols * scale;
-      const h = w * window.Faces.aspectOf('kike');
-      const cx = x + 7 * scale;
-      const cy = y + cyRows * scale;
-      drawFaceOver(ctx, 'kike', x, y, scale, wCols, cyRows, opts);
-      // El texto del logo en la gorra se vuelve ilegible al reescalar la foto;
-      // pintamos un label sintético "MANITOU" en la parte alta de la cabeza
-      // para que se lea claramente.
-      drawCapLabel(ctx, cx, cy - h * 0.34, w * 0.66);
+      drawFaceOver(ctx, 'kike', x, y, scale, 28, 3, opts);
     } else {
       drawPixels(ctx, x, y, scale, KIKE_IDLE, KIKE_PALETTE);
     }
-  }
-
-  function drawCapLabel(ctx, cx, cy, w) {
-    const fontPx = Math.max(5, Math.round(w * 0.22));
-    ctx.save();
-    ctx.font = `${fontPx}px "Press Start 2P", monospace`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    // contorno negro para destacar sobre la gorra oscura
-    ctx.fillStyle = '#000';
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dy = -1; dy <= 1; dy++) {
-        if (dx === 0 && dy === 0) continue;
-        ctx.fillText('MANITOU', cx + dx, cy + dy);
-      }
-    }
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText('MANITOU', cx, cy);
-    ctx.restore();
   }
 
   // ============ SABLE LÁSER ============
@@ -394,9 +366,9 @@
     drawWheel(ctx, x + 24 * s, y + 22 * s, s);
 
     // Cabina (amarilla brillante)
-    fillRect(ctx, x + 5 * s, y + 6 * s,  18 * s, 12 * s, '#f5c518');
-    fillRect(ctx, x + 5 * s, y + 6 * s,  18 * s, 2 * s,  '#fce370'); // highlight superior
-    fillRect(ctx, x + 5 * s, y + 17 * s, 18 * s, 1 * s,  '#a0780c'); // sombra inferior
+    fillRect(ctx, x + 5 * s, y + 6 * s,  18 * s, 12 * s, '#d62828');
+    fillRect(ctx, x + 5 * s, y + 6 * s,  18 * s, 2 * s,  '#ff6a4a'); // highlight superior
+    fillRect(ctx, x + 5 * s, y + 17 * s, 18 * s, 1 * s,  '#8a1810'); // sombra inferior
     // Cristal
     fillRect(ctx, x + 8 * s,  y + 8 * s,  11 * s, 6 * s, '#52b8d8');
     fillRect(ctx, x + 8 * s,  y + 8 * s,  11 * s, 1 * s, '#a8e8ff'); // reflejo
@@ -411,17 +383,17 @@
     ctx.save();
     ctx.translate(x + 22 * s, y + 12 * s);
     ctx.rotate(-armAngle);
-    fillRect(ctx, 0, -1 * s, 18 * s, 3 * s, '#f5c518');
-    fillRect(ctx, 0, -1 * s, 18 * s, 1 * s, '#fce370');
-    fillRect(ctx, 0, 2 * s,  18 * s, 1 * s, '#a0780c');
+    fillRect(ctx, 0, -1 * s, 18 * s, 3 * s, '#d62828');
+    fillRect(ctx, 0, -1 * s, 18 * s, 1 * s, '#ff6a4a');
+    fillRect(ctx, 0, 2 * s,  18 * s, 1 * s, '#8a1810');
 
     ctx.translate(18 * s, 0);
     // pivote
     fillRect(ctx, -1 * s, -2 * s, 3 * s, 4 * s, '#222');
     ctx.rotate(armAngle * 1.3);
-    fillRect(ctx, 0, -1 * s, 12 * s, 3 * s, '#f5c518');
-    fillRect(ctx, 0, -1 * s, 12 * s, 1 * s, '#fce370');
-    fillRect(ctx, 0, 2 * s,  12 * s, 1 * s, '#a0780c');
+    fillRect(ctx, 0, -1 * s, 12 * s, 3 * s, '#d62828');
+    fillRect(ctx, 0, -1 * s, 12 * s, 1 * s, '#ff6a4a');
+    fillRect(ctx, 0, 2 * s,  12 * s, 1 * s, '#8a1810');
 
     ctx.translate(12 * s, 0);
     // Pala/cuchara

@@ -72,10 +72,15 @@
   // El bucle principal arranca con imageSmoothingEnabled=false para conservar
   // el look pixel-art; aquí lo habilitamos temporalmente para que el downscale
   // del PNG real preserve detalles finos (especialmente el texto "MANITOU").
+  // El Manitou se estira un 25% en horizontal manteniendo el alto, para que
+  // se vea más ancho/robusto sin alargarse.
+  const WIDTH_STRETCH = 1.25;
+
   function drawManitouTop(ctx, cx, cy, w, opts) {
     if (!state.ready) return false;
     const aspect = state.h / state.w;
     const h = w * aspect;
+    const dw = w * WIDTH_STRETCH;
     const o = opts || {};
     const prevSmooth = ctx.imageSmoothingEnabled;
     const prevQuality = ctx.imageSmoothingQuality;
@@ -85,7 +90,7 @@
     if (o.alpha != null) ctx.globalAlpha *= o.alpha;
     ctx.translate(cx, cy);
     if (o.rotation) ctx.rotate(o.rotation);
-    ctx.drawImage(state.canvas, -w / 2, -h / 2, w, h);
+    ctx.drawImage(state.canvas, -dw / 2, -h / 2, dw, h);
 
     // El logo "MANITOU" del PNG va rotado en el lateral y se vuelve ilegible
     // al escalar al tamaño de juego (~60-80 px). Pintamos encima un label
@@ -97,7 +102,7 @@
     ctx.font = `${fontPx}px "Press Start 2P", monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.translate(-w * 0.06, -h * 0.04);
+    ctx.translate(-dw * 0.06, -h * 0.04);
     ctx.rotate(-Math.PI / 2);
     const letters = ['M', 'A', 'N', 'I', 'T', 'O', 'U'];
     const span = w * 0.62;

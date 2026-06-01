@@ -1,64 +1,58 @@
-// Pantalla 3 (rediseñada): puzle dentro de la compactadora del centro de
-// residuos. Pedrito conduce su Manitou y debe apilar palets para formar una
-// rampa que llegue a la puerta lateral antes de que el techo descienda y le
-// aplaste.
+// Pantalla 3 (puzle): dentro de la compactadora del centro de residuos.
+// Pedrito conduce una Manitou con HORQUILLA (carretilla elevadora) y debe
+// apilar los escombros para montar una rampa y escapar por el hueco de la
+// pared derecha antes de que el techo lo aplaste.
 //
-// Mecánica:
-//   - 4 columnas verticales. Cada columna puede contener una pila de palets.
-//   - La Manitou se mueve entre columnas; solo puede pasar a una columna
-//     adyacente si la diferencia de altura es <= 1 palet (un escalón).
-//   - Las horquillas operan sobre la columna que tiene DELANTE (sentido de
-//     mirada): el botón ACCIÓN LEVANTA el palet superior si va vacía, o
-//     SUELTA el palet si la lleva.
-//   - El techo desciende; si toca a la Manitou, Pedrito pierde una vida.
-//   - La puerta de salida está en la pared derecha al nivel 2 de palets:
-//     cuando la Manitou esté en la columna 3 sobre 2 palets apilados,
-//     Pedrito escapa.
-//
-// Estado inicial diseñado para tener una solución corta y clara:
-//   stacks = [2, 2, 1, 0]
-//   Objetivo: stacks = [0, 1, 2, 2] (consume 3 movimientos de palet).
+// Reglas:
+//   - Hay dos tipos de escombro: palets CUADRADOS y palets RAMPA (cuña).
+//   - La Manitou se sitúa SOBRE su columna y opera la columna que tiene
+//     DELANTE (según hacia dónde mira): COGE el escombro de arriba del vecino,
+//     o lo SUELTA encima del vecino. Nunca opera la columna en la que está.
+//   - Desde el suelo solo se puede apilar hasta altura 2. Para apilar más alto
+//     hay que SUBIRSE a un escalón más alto (por la rampa) y apilar desde allí
+//     (alcance = nivel actual + 2).
+//   - Solo se sube un escalón si está rematado con una rampa.
+//   - Cuando la rampa llega al hueco, se sube a mano y se escapa.
 (function () {
   'use strict';
 
   const W = 360, H = 640;
 
-  // Geometría del compactador
+  // Geometría
   const C_X = 20;
   const C_W = 320;
   const FLOOR_Y = 540;
-  const C_TOP_LIMIT = 80;          // posición inicial del techo (arriba)
-  const COLS = 4;
-  const COL_W = C_W / COLS;        // 80
-  const PAL_H = 32;
-  const PAL_W = 70;
-  const MAN_SCALE = 2;
-  const MAN_W = 60;                // chasis dibujado por drawManitou con s=2
-  const MAN_VISUAL_H = 58;         // altura visual aproximada con brazo bajo
+  const C_TOP_LIMIT = 80;
+  const COLS = 5;
+  const COL_W = C_W / COLS;          // 64
+  const PAL_H = 30;
+  const PAL_W = 52;
+  const REACH = 2;                   // alcance de apilado por encima del nivel
 
-  const EXIT_COL = COLS - 1;       // 3
-  const EXIT_LEVEL = 2;            // altura de stack necesaria para escapar
+  const EXIT_COL = COLS - 1;         // 4
+  const EXIT_LEVEL = 4;
   const EXIT_DOOR_BOT = FLOOR_Y - EXIT_LEVEL * PAL_H;
-  const EXIT_DOOR_TOP = EXIT_DOOR_BOT - 56;
+  const EXIT_DOOR_TOP = EXIT_DOOR_BOT - 52;
 
-  const CEIL_SPEED = 6.4;          // px/s — calibrado para ~55s antes de aplastar
+  const CEIL_SPEED = 3.2;            // px/s (lento: es un puzle de pensar)
+  const CEIL_LOSE_Y = FLOOR_Y - EXIT_LEVEL * PAL_H - 8;
 
   // Estado
-  let stacks;
+  let cols;            // array[COLS] de arrays ('sq'|'ramp')
   let manitouCol;
-  let facing;
-  let holding;
+  let facing;          // -1 | +1 (hacia dónde apunta la horquilla)
+  let holding;         // null | 'sq' | 'ramp'
   let ceilY;
-  let win, lose;
+  let lose, win;
   let outcomeT;
-  let liftAnim;       // 0..1, animación del brazo al levantar
-  let dropAnim;       // 0..1
-  let pedJumpT;       // animación de salida (Pedrito salta de la Manitou)
+  let liftAnim, dropAnim;
   let shakeT;
   let timer;
-  let manitouXVisual; // para animación suave entre columnas
+  let started;
+  let exiting, exitT;
+  let manitouXVisual, manitouYVisual;
 
-  // Botones (mobile)
+  // Botones
   const BTN_SIZE = 78;
   const BTN_Y = H - BTN_SIZE - 14;
   const BTN_LEFT_X = 12;
@@ -68,391 +62,405 @@
   let prevL = false, prevR = false, prevAct = false;
 
   function enter() {
-    stacks = [2, 2, 1, 0];
-    manitouCol = 0;
+    cols = [
+      ['ramp', 'ramp'],   // suministro de rampas (debe quedar vacío)
+      ['ramp'],
+      ['sq', 'ramp'],
+      ['sq', 'sq'],
+      ['sq', 'sq', 'sq'],
+    ];
+    manitouCol = 1;
     facing = 1;
-    holding = false;
+    holding = null;
     ceilY = C_TOP_LIMIT;
-    win = false; lose = false;
+    lose = false; win = false;
     outcomeT = 0;
-    liftAnim = 0;
-    dropAnim = 0;
-    pedJumpT = 0;
+    liftAnim = 0; dropAnim = 0;
     shakeT = 0;
     timer = 0;
+    started = false;
+    exiting = false; exitT = 0;
     manitouXVisual = colCenterX(manitouCol);
+    manitouYVisual = surfaceY(manitouCol);
     prevL = prevR = prevAct = false;
     window.Effects.reset();
   }
 
-  function colCenterX(c) {
-    return C_X + c * COL_W + COL_W / 2;
+  // ----- helpers de pila -----
+  function colCenterX(c) { return C_X + c * COL_W + COL_W / 2; }
+  function height(c) { return cols[c].length; }
+  function topItem(c) { return cols[c].length ? cols[c][cols[c].length - 1] : null; }
+  function topIsRamp(c) { return topItem(c) === 'ramp'; }
+  function level() { return height(manitouCol); }
+  function surfaceY(c) { return FLOOR_Y - height(c) * PAL_H; }
+
+  // Objetivo: rampa continua hasta la salida.
+  function rampComplete() {
+    if (height(0) !== 0) return false;
+    for (let c = 1; c <= EXIT_COL; c++) {
+      if (height(c) !== height(c - 1) + 1) return false;
+      if (!topIsRamp(c)) return false;
+    }
+    return height(EXIT_COL) === EXIT_LEVEL;
   }
 
-  function manitouTopY() {
-    // y de la parte alta de la Manitou cuando descansa sobre la pila de su col
-    return FLOOR_Y - stacks[manitouCol] * PAL_H - MAN_VISUAL_H;
-  }
+  // ============================== UPDATE ==============================
 
   function update(dt) {
     timer += dt;
+    window.Effects.update(dt);
 
-    if (!win && !lose) {
-      ceilY += CEIL_SPEED * dt;
-      handleInput();
+    if (!started) {
+      animManitou(dt);
+      if (timer > 0.5 && window.Input.actionJustPressed()) { started = true; prevAct = true; }
+      return;
+    }
 
-      // Anim suave horizontal de la Manitou
-      const tgtX = colCenterX(manitouCol);
-      manitouXVisual += (tgtX - manitouXVisual) * Math.min(1, dt * 14);
+    if (exiting) {
+      exitT += dt;
+      manitouXVisual += (C_X + C_W + 70 - manitouXVisual) * Math.min(1, dt * 4);
+      if (exitT > 1.2) { win = true; window.Loop.setScene('NARRATIVE_4'); }
+      return;
+    }
 
-      // Anim de brazo
-      if (liftAnim > 0) liftAnim = Math.max(0, liftAnim - dt * 3);
-      if (dropAnim > 0) dropAnim = Math.max(0, dropAnim - dt * 3);
-
-      // Lose: techo aplasta a la Manitou
-      const mTop = manitouTopY();
-      if (ceilY >= mTop - 2) {
-        lose = true;
-        outcomeT = 0;
-        shakeT = 0.45;
-        window.Audio8.sfx('explosion');
-        window.GameState.loseLife();
-        window.Effects.explosion(manitouXVisual, mTop + MAN_VISUAL_H / 2,
-                                 { count: 22, speed: 90 });
-      }
-
-      // Win: Manitou en exit col con stack >= exit level, no llevando palet
-      if (manitouCol === EXIT_COL && stacks[EXIT_COL] >= EXIT_LEVEL && !holding) {
-        win = true;
-        outcomeT = 0;
-        pedJumpT = 0;
-        window.Audio8.sfx('win');
-      }
-    } else {
+    if (lose) {
       outcomeT += dt;
-      if (win) {
-        pedJumpT = Math.min(1, pedJumpT + dt * 0.55);
-        if (outcomeT > 2.2) window.Loop.setScene('NARRATIVE_4');
-      } else {
-        if (outcomeT > 1.3) {
-          if (window.GameState.state.infiniteLives || window.GameState.state.lives > 0) {
-            enter();
-          } else {
-            window.Loop.setScene('DEFEAT');
-          }
-        }
+      if (outcomeT > 1.3) {
+        if (window.GameState.state.infiniteLives || window.GameState.state.lives > 0) enter();
+        else window.Loop.setScene('DEFEAT');
       }
+      return;
+    }
+
+    handleInput();
+    animManitou(dt);
+    if (liftAnim > 0) liftAnim = Math.max(0, liftAnim - dt * 3);
+    if (dropAnim > 0) dropAnim = Math.max(0, dropAnim - dt * 3);
+
+    ceilY += CEIL_SPEED * dt;
+    if (ceilY >= CEIL_LOSE_Y) {
+      lose = true; outcomeT = 0; shakeT = 0.45;
+      window.Audio8.sfx('explosion');
+      window.GameState.loseLife();
+      window.Effects.explosion(manitouXVisual, FLOOR_Y - 24, { count: 22, speed: 90 });
     }
 
     if (shakeT > 0) shakeT -= dt;
-    window.Effects.update(dt);
   }
+
+  function animManitou(dt) {
+    manitouXVisual += (colCenterX(manitouCol) - manitouXVisual) * Math.min(1, dt * 12);
+    manitouYVisual += (surfaceY(manitouCol) - manitouYVisual) * Math.min(1, dt * 12);
+  }
+
+  // ----------------------- input / acciones -----------------------
 
   function handleInput() {
     const p = window.Input.pointer;
-    const left  = isLeftPressed(p);
-    const right = isRightPressed(p);
-    const act   = isActPressed(p);
-
-    if (left && !prevL) attemptMove(-1);
-    if (right && !prevR) attemptMove(+1);
+    const left  = pressedLeft(p);
+    const right = pressedRight(p);
+    const act   = pressedAct(p);
+    if (left && !prevL) press(-1);
+    if (right && !prevR) press(+1);
     if (act && !prevAct) doAction();
-
     prevL = left; prevR = right; prevAct = act;
   }
 
-  function pointInBtn(p, bx, by) {
-    return p.isDown && p.x >= bx && p.x <= bx + BTN_SIZE &&
-           p.y >= by && p.y <= by + BTN_SIZE;
+  function inBtn(p, bx) {
+    return p.isDown && p.x >= bx && p.x <= bx + BTN_SIZE && p.y >= BTN_Y && p.y <= BTN_Y + BTN_SIZE;
   }
-  function isLeftPressed(p) {
-    if (pointInBtn(p, BTN_LEFT_X, BTN_Y)) return true;
-    return window.Input.isKey('ArrowLeft');
-  }
-  function isRightPressed(p) {
-    if (pointInBtn(p, BTN_RIGHT_X, BTN_Y)) return true;
-    return window.Input.isKey('ArrowRight');
-  }
-  function isActPressed(p) {
-    if (pointInBtn(p, BTN_ACT_X, BTN_Y)) return true;
-    return window.Input.isKey('Space') ||
-           window.Input.isKey('Enter')  ||
-           window.Input.isKey('NumpadEnter') ||
+  function pressedLeft(p)  { return inBtn(p, BTN_LEFT_X)  || window.Input.isKey('ArrowLeft'); }
+  function pressedRight(p) { return inBtn(p, BTN_RIGHT_X) || window.Input.isKey('ArrowRight'); }
+  function pressedAct(p) {
+    return inBtn(p, BTN_ACT_X) || window.Input.isKey('Space') ||
+           window.Input.isKey('Enter') || window.Input.isKey('NumpadEnter') ||
            window.Input.isKey('KeyZ');
   }
 
-  function attemptMove(dir) {
-    facing = dir;
+  // Pulsar en sentido contrario al que mira = girar (sin moverse). En el mismo
+  // sentido = avanzar/subir/bajar una columna.
+  function press(dir) {
+    if (dir !== facing) { facing = dir; return; }
     const nc = manitouCol + dir;
     if (nc < 0 || nc >= COLS) return;
-    const diff = stacks[nc] - stacks[manitouCol];
-    if (diff > 1) return;          // demasiado alto para escalar
-    if (diff < -2) return;         // demasiada caída
+    const lvl = level();
+    const hc = height(nc);
+    let ok = false;
+    if (hc <= lvl) ok = true;                                   // bajar / llano
+    else if (hc === lvl + 1 && topIsRamp(nc)) ok = true;        // subir un escalón (rampa)
+    if (!ok) return;
     manitouCol = nc;
+    window.Audio8.sfx('hit');
+    if (manitouCol === EXIT_COL && height(EXIT_COL) === EXIT_LEVEL) startExit();
+  }
+
+  // Operación sobre la columna de delante.
+  function targetCol() { return manitouCol + facing; }
+
+  function actionLabel() {
+    const c = targetCol();
+    if (c < 0 || c >= COLS) return '—';
+    if (holding) {
+      if (holding === 'sq' && topItem(c) === 'ramp') return '—';
+      if (height(c) + 1 > level() + REACH) return '—';   // fuera de alcance
+      return 'SOLTAR';
+    }
+    return height(c) > 0 ? 'COGER' : '—';
   }
 
   function doAction() {
-    const tgt = manitouCol + facing;
-    if (tgt < 0 || tgt >= COLS) return;
+    const c = targetCol();
+    if (c < 0 || c >= COLS) return;
     if (holding) {
-      stacks[tgt]++;
-      holding = false;
+      if (holding === 'sq' && topItem(c) === 'ramp') return;
+      if (height(c) + 1 > level() + REACH) return;
+      cols[c].push(holding);
+      holding = null;
       dropAnim = 1;
       window.Audio8.sfx('hit');
     } else {
-      if (stacks[tgt] <= 0) return;
-      stacks[tgt]--;
-      holding = true;
+      if (height(c) <= 0) return;
+      holding = cols[c].pop();
       liftAnim = 1;
       window.Audio8.sfx('hit');
     }
+  }
+
+  function startExit() {
+    exiting = true; exitT = 0; facing = 1;
+    window.Audio8.sfx('win');
   }
 
   // ============================== RENDER ==============================
 
   function render(ctx) {
     ctx.save();
-    if (shakeT > 0) {
-      ctx.translate((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8);
-    }
+    if (shakeT > 0) ctx.translate((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8);
 
-    // Fondo
     ctx.fillStyle = '#0c0d12';
     ctx.fillRect(0, 0, W, H);
 
-    drawCompactorChamber(ctx);
+    drawChamber(ctx);
     drawExitDoor(ctx);
-    drawPallets(ctx);
+    drawTargetHighlight(ctx);
+    drawStacks(ctx);
     drawCeiling(ctx);
-    drawManitouAndPedrito(ctx);
+    drawManitou(ctx);
     window.Effects.render(ctx);
 
     drawHUD(ctx);
     drawButtons(ctx);
 
-    if (win)  drawWinOverlay(ctx);
+    if (!started) drawIntro(ctx);
     if (lose) drawLoseOverlay(ctx);
 
     ctx.restore();
   }
 
-  function drawCompactorChamber(ctx) {
-    // Suelo (basura compactada)
+  function drawChamber(ctx) {
     ctx.fillStyle = '#241a14';
     ctx.fillRect(C_X, FLOOR_Y, C_W, H - FLOOR_Y);
-    // textura
     ctx.fillStyle = '#3a2820';
-    for (let i = 0; i < 14; i++) {
-      const x = C_X + ((i * 41) % C_W);
-      const y = FLOOR_Y + ((i * 7) % 60);
-      ctx.fillRect(x, y, 8, 4);
-    }
-    ctx.fillStyle = '#6a5018';
-    for (let i = 0; i < 6; i++) {
-      const x = C_X + 10 + ((i * 67) % (C_W - 30));
-      const y = FLOOR_Y + 8 + ((i * 11) % 40);
-      ctx.fillRect(x, y, 6, 3);
-    }
+    for (let i = 0; i < 14; i++) ctx.fillRect(C_X + ((i * 41) % C_W), FLOOR_Y + ((i * 7) % 60), 8, 4);
 
-    // Pared izquierda (industrial)
-    drawIndustrialWall(ctx, 0, 0, C_X, H, 'L');
-    // Pared derecha
-    drawIndustrialWall(ctx, C_X + C_W, 0, W - (C_X + C_W), H, 'R');
+    drawWall(ctx, 0, C_X, 'L');
+    drawWall(ctx, C_X + C_W, W - (C_X + C_W), 'R');
 
-    // Sombra del techo (parte ya tapada por el techo descendido)
     ctx.fillStyle = 'rgba(0,0,0,0.30)';
     ctx.fillRect(C_X, 0, C_W, Math.max(0, ceilY));
 
-    // Marco superior fijo (rieles donde corre el techo)
     ctx.fillStyle = '#1a1a22';
     ctx.fillRect(C_X, 0, C_W, 18);
-    ctx.fillStyle = '#3a3a4a';
-    for (let x = C_X; x < C_X + C_W; x += 16) {
-      ctx.fillRect(x + 2, 4, 12, 2);
-    }
-
-    // Carteles de aviso
-    ctx.save();
     ctx.fillStyle = '#ffe81f';
     ctx.font = '6px "Press Start 2P", monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('!  PRECAUCIÓN  !', W / 2, 14);
-    ctx.restore();
+    ctx.fillText('!  COMPACTADORA  !', W / 2, 13);
   }
 
-  function drawIndustrialWall(ctx, x, y, w, h, side) {
-    const grad = side === 'L'
-      ? ctx.createLinearGradient(x, 0, x + w, 0)
-      : ctx.createLinearGradient(x + w, 0, x, 0);
-    grad.addColorStop(0,   '#3a2a18');
-    grad.addColorStop(0.6, '#241a10');
-    grad.addColorStop(1,   '#120a04');
-    ctx.fillStyle = grad;
-    ctx.fillRect(x, y, w, h);
-    // bandas verticales
+  function drawWall(ctx, x, w, side) {
+    const g = side === 'L' ? ctx.createLinearGradient(x, 0, x + w, 0)
+                           : ctx.createLinearGradient(x + w, 0, x, 0);
+    g.addColorStop(0, '#3a2a18'); g.addColorStop(0.6, '#241a10'); g.addColorStop(1, '#120a04');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, 0, w, H);
     ctx.fillStyle = '#5a4220';
-    ctx.fillRect(x + (side === 'L' ? w - 4 : 0), y, 4, h);
-    // tornillos
-    ctx.fillStyle = '#1a0f06';
-    for (let yy = 20; yy < h; yy += 80) {
-      const sx = side === 'L' ? w - 10 : 4;
-      ctx.fillRect(x + sx, yy, 4, 4);
-    }
+    ctx.fillRect(x + (side === 'L' ? w - 4 : 0), 0, 4, H);
   }
 
   function drawExitDoor(ctx) {
-    // Hueco en la pared derecha al nivel 2.
     const dx = C_X + C_W;
-    // Marco
     ctx.fillStyle = '#ffe81f';
     ctx.fillRect(dx - 6, EXIT_DOOR_TOP - 2, 14, EXIT_DOOR_BOT - EXIT_DOOR_TOP + 4);
-    // Hueco oscuro
     ctx.fillStyle = '#0a0a08';
     ctx.fillRect(dx - 2, EXIT_DOOR_TOP, 12, EXIT_DOOR_BOT - EXIT_DOOR_TOP);
-    // Flecha indicadora animada
-    const tt = timer * 2;
-    const arrowX = dx + 6 + Math.sin(tt) * 3;
+    const cy = (EXIT_DOOR_TOP + EXIT_DOOR_BOT) / 2;
+    const ax = dx + 6 + Math.sin(timer * 2) * 3;
     ctx.fillStyle = '#7af0a8';
     ctx.beginPath();
-    ctx.moveTo(arrowX,      (EXIT_DOOR_TOP + EXIT_DOOR_BOT) / 2);
-    ctx.lineTo(arrowX - 8,  (EXIT_DOOR_TOP + EXIT_DOOR_BOT) / 2 - 6);
-    ctx.lineTo(arrowX - 8,  (EXIT_DOOR_TOP + EXIT_DOOR_BOT) / 2 + 6);
-    ctx.closePath();
-    ctx.fill();
-    // texto SALIDA pequeño
+    ctx.moveTo(ax, cy); ctx.lineTo(ax - 8, cy - 6); ctx.lineTo(ax - 8, cy + 6);
+    ctx.closePath(); ctx.fill();
     ctx.fillStyle = '#ffe81f';
     ctx.font = '6px "Press Start 2P", monospace';
     ctx.textAlign = 'left';
     ctx.fillText('SALIDA', dx + 2, EXIT_DOOR_TOP - 4);
   }
 
-  function drawPallets(ctx) {
+  // Resalta la columna que la horquilla tiene delante (la que va a operar).
+  function drawTargetHighlight(ctx) {
+    if (!started || exiting || lose) return;
+    const c = targetCol();
+    if (c < 0 || c >= COLS) return;
+    const x = C_X + c * COL_W;
+    ctx.save();
+    ctx.globalAlpha = 0.12 + Math.sin(timer * 4) * 0.05;
+    ctx.fillStyle = actionLabel() === '—' ? '#ff5050' : '#7af0a8';
+    ctx.fillRect(x + 2, ceilY + 4, COL_W - 4, FLOOR_Y - ceilY - 4);
+    ctx.restore();
+  }
+
+  function drawStacks(ctx) {
     for (let c = 0; c < COLS; c++) {
       const cx = colCenterX(c);
-      for (let k = 0; k < stacks[c]; k++) {
-        const by = FLOOR_Y - k * PAL_H - PAL_H;
-        drawPallet(ctx, cx, by);
+      for (let k = 0; k < cols[c].length; k++) {
+        if (cols[c][k] === 'sq') drawSquare(ctx, cx, FLOOR_Y - (k + 1) * PAL_H);
+        else drawRamp(ctx, cx, FLOOR_Y - k * PAL_H);
       }
     }
-    // palet en horquillas
     if (holding) {
-      const cx = manitouXVisual + facing * 18;
-      const cy = manitouTopY() - 8;
-      drawPallet(ctx, cx, cy);
+      const cx = manitouXVisual + facing * (COL_W * 0.5);
+      const top = manitouYVisual - 18 - PAL_H;
+      if (holding === 'sq') drawSquare(ctx, cx, top);
+      else drawRamp(ctx, cx, top + PAL_H);
     }
   }
 
-  function drawPallet(ctx, cx, top) {
-    const x = cx - PAL_W / 2;
-    const y = top;
-    // Cuerpo (madera rojiza, estilo palet industrial)
+  function drawSquare(ctx, cx, top) {
+    const x = cx - PAL_W / 2, y = top;
     ctx.fillStyle = '#8a3a1a';
     ctx.fillRect(x, y, PAL_W, PAL_H);
-    // Tablones horizontales
-    ctx.fillStyle = '#a04a1e';
-    ctx.fillRect(x + 2, y + 2,  PAL_W - 4, 6);
-    ctx.fillRect(x + 2, y + 12, PAL_W - 4, 6);
-    ctx.fillRect(x + 2, y + 22, PAL_W - 4, 6);
-    // Sombras entre tablones
-    ctx.fillStyle = '#4a1a08';
-    ctx.fillRect(x + 2, y + 8,  PAL_W - 4, 2);
-    ctx.fillRect(x + 2, y + 18, PAL_W - 4, 2);
-    // Patas (3 verticales en el frente)
-    ctx.fillStyle = '#6a2a14';
-    ctx.fillRect(x,             y, 6, PAL_H);
-    ctx.fillRect(x + PAL_W / 2 - 3, y, 6, PAL_H);
-    ctx.fillRect(x + PAL_W - 6, y, 6, PAL_H);
-    // borde
+    ctx.fillStyle = '#a8501e';
+    ctx.fillRect(x + 3, y + 3, PAL_W - 6, PAL_H - 6);
+    ctx.fillStyle = '#5a2410';
+    ctx.fillRect(x, y, PAL_W, 3);
+    ctx.fillRect(x, y + PAL_H - 3, PAL_W, 3);
+    ctx.fillRect(x, y, 4, PAL_H);
+    ctx.fillRect(x + PAL_W - 4, y, 4, PAL_H);
+    ctx.fillRect(x + PAL_W / 2 - 2, y, 4, PAL_H);
     ctx.fillStyle = '#2a0a04';
     ctx.fillRect(x, y, PAL_W, 1);
-    ctx.fillRect(x, y + PAL_H - 1, PAL_W, 1);
+  }
+
+  function drawRamp(ctx, cx, baseY) {
+    const L = cx - COL_W / 2 + 6;
+    const R = cx + COL_W / 2 - 6;
+    const bottom = baseY;
+    const top = baseY - PAL_H;
+    ctx.fillStyle = '#b5641e';
+    ctx.beginPath();
+    ctx.moveTo(L, bottom); ctx.lineTo(R, bottom); ctx.lineTo(R, top);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#7a3e10';
+    ctx.lineWidth = 1;
+    for (let i = 1; i <= 3; i++) {
+      const fx = L + (R - L) * (i / 4);
+      ctx.beginPath();
+      ctx.moveTo(fx, bottom);
+      ctx.lineTo(fx, bottom - (bottom - top) * (i / 4));
+      ctx.stroke();
+    }
+    ctx.strokeStyle = '#e8a24a';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(L, bottom); ctx.lineTo(R, top);
+    ctx.stroke();
   }
 
   function drawCeiling(ctx) {
     if (ceilY <= C_TOP_LIMIT - 20) return;
-    // Plancha metálica con dientes inferiores
     const y0 = Math.max(-30, ceilY - 80);
-    // cuerpo
-    const grad = ctx.createLinearGradient(0, y0, 0, ceilY);
-    grad.addColorStop(0, '#2a2a32');
-    grad.addColorStop(0.7, '#5a5a68');
-    grad.addColorStop(1, '#1a1a22');
-    ctx.fillStyle = grad;
+    const g = ctx.createLinearGradient(0, y0, 0, ceilY);
+    g.addColorStop(0, '#2a2a32'); g.addColorStop(0.7, '#5a5a68'); g.addColorStop(1, '#1a1a22');
+    ctx.fillStyle = g;
     ctx.fillRect(C_X, y0, C_W, ceilY - y0);
-    // remaches
-    ctx.fillStyle = '#1a1a22';
-    for (let x = C_X + 12; x < C_X + C_W - 8; x += 28) {
-      ctx.fillRect(x, y0 + 8, 4, 4);
-    }
-    // pistones a los lados
     ctx.fillStyle = '#7a7a8a';
     ctx.fillRect(C_X + 6, 0, 6, ceilY);
     ctx.fillRect(C_X + C_W - 12, 0, 6, ceilY);
-    // dientes inferiores (sierra)
     ctx.fillStyle = '#cccccc';
     const tooth = 14;
     for (let x = C_X; x < C_X + C_W; x += tooth) {
       ctx.beginPath();
-      ctx.moveTo(x, ceilY);
-      ctx.lineTo(x + tooth / 2, ceilY + 10);
-      ctx.lineTo(x + tooth, ceilY);
-      ctx.closePath();
-      ctx.fill();
+      ctx.moveTo(x, ceilY); ctx.lineTo(x + tooth / 2, ceilY + 10); ctx.lineTo(x + tooth, ceilY);
+      ctx.closePath(); ctx.fill();
     }
-    // sombra debajo del techo
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.fillRect(C_X, ceilY + 10, C_W, 18);
   }
 
-  function drawManitouAndPedrito(ctx) {
-    if (win && pedJumpT > 0.2) {
-      // Pedrito salta hacia la salida
-      const px = manitouXVisual + lerp(0, EXIT_COL === manitouCol ? 60 : 0, pedJumpT);
-      const py = manitouTopY() - lerp(0, 26, Math.sin(pedJumpT * Math.PI));
-      // Manitou se queda
-      drawManitouSprite(ctx, manitouXVisual, manitouTopY());
-      window.Characters.drawPedrito(ctx, px - 14, py, 2);
-      return;
+  // ---------- Manitou con HORQUILLA (carretilla elevadora roja) ----------
+  function drawManitou(ctx) {
+    const cx = manitouXVisual;
+    const sY = manitouYVisual;          // superficie donde apoyan las ruedas
+    drawForklift(ctx, cx, sY, facing);
+    // Pedrito en la cabina
+    window.Characters.drawPedrito(ctx, cx - 14, sY - 64, 1.3, 'idle');
+
+    if (!exiting && rampComplete() && manitouCol === EXIT_COL - 1 &&
+        Math.floor(timer * 2) % 2 === 0) {
+      ctx.fillStyle = '#7af0a8';
+      ctx.font = '14px "Press Start 2P", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('→', cx + 16, sY - 50);
     }
-    drawManitouSprite(ctx, manitouXVisual, manitouTopY());
-    // Pedrito sentado sobre la cabina
-    const px = manitouXVisual - 14;
-    const py = manitouTopY() - 22;
-    window.Characters.drawPedrito(ctx, px, py, 1.5);
   }
 
-  function drawManitouSprite(ctx, cx, topY) {
-    // armAngle: 0..0.8. Sube cuando va con un palet en las horquillas o
-    // durante la animación de levantar.
-    const lifting = holding ? 1 : Math.max(liftAnim, dropAnim);
-    const armAngle = 0.15 + lifting * 0.6;
-    // El sprite se ancla por su esquina superior izquierda; chasis ~30 cells × scale 2 = 60w
-    const x = cx - MAN_W / 2;
-    // Manitou mira a 'facing'. drawManitou solo dibuja hacia la derecha;
-    // si facing=-1 hacemos flip horizontal.
-    ctx.save();
-    if (facing < 0) {
-      ctx.translate(cx, 0);
-      ctx.scale(-1, 1);
-      ctx.translate(-cx, 0);
+  function drawForklift(ctx, cx, sY, dir) {
+    const bodyW = 40, bodyH = 22;
+    const bx = cx - bodyW / 2;
+    const by = sY - 8 - bodyH;          // 8 = hueco de las ruedas
+    // ruedas
+    ctx.fillStyle = '#1a1a1a';
+    for (const wx of [cx - 12, cx + 12]) {
+      ctx.beginPath(); ctx.arc(wx, sY - 6, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#3a3a3a';
+      ctx.beginPath(); ctx.arc(wx, sY - 6, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#1a1a1a';
     }
-    window.Characters.drawManitou(ctx, x - 2, topY, MAN_SCALE, armAngle);
-    ctx.restore();
+    // chasis rojo
+    ctx.fillStyle = '#d62828';
+    ctx.fillRect(bx, by, bodyW, bodyH);
+    ctx.fillStyle = '#ff6a4a';
+    ctx.fillRect(bx, by, bodyW, 3);
+    ctx.fillStyle = '#8a1810';
+    ctx.fillRect(bx, by + bodyH - 3, bodyW, 3);
+    // cabina
+    const cabX = dir > 0 ? bx + 6 : bx + bodyW - 22;
+    ctx.fillStyle = '#d62828';
+    ctx.fillRect(cabX, by - 14, 16, 16);
+    ctx.fillStyle = '#52b8d8';
+    ctx.fillRect(cabX + 2, by - 12, 12, 9);
+    ctx.fillStyle = '#a8e8ff';
+    ctx.fillRect(cabX + 2, by - 12, 12, 2);
+    // mástil vertical y horquilla (en el sentido de 'dir')
+    const mastX = dir > 0 ? bx + bodyW : bx;
+    ctx.fillStyle = '#9a9a9a';
+    ctx.fillRect(mastX - 2, by - 16, 4, bodyH + 14);
+    // dos uñas de la horquilla
+    const forkLen = COL_W * 0.55;
+    const forkBaseX = mastX;
+    ctx.fillStyle = '#bdbdbd';
+    for (const fy of [sY - 10, sY - 4]) {
+      if (dir > 0) ctx.fillRect(forkBaseX, fy, forkLen, 3);
+      else ctx.fillRect(forkBaseX - forkLen, fy, forkLen, 3);
+    }
   }
 
+  // ------------------------------- HUD -------------------------------
   function drawHUD(ctx) {
     window.NarrativeHUD.drawLives(ctx);
-
     ctx.fillStyle = '#ffe81f';
     ctx.font = '7px "Press Start 2P", monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('APILA PALETS Y ESCAPA', W / 2, 30);
-    ctx.font = '6px "Press Start 2P", monospace';
-    ctx.fillText('< MOVER >    ACCIÓN: LEVANTAR / SOLTAR', W / 2, 46);
+    ctx.fillText('APILA LOS ESCOMBROS Y ESCAPA', W / 2, 34);
 
-    // Barra del techo
-    const fall = (ceilY - C_TOP_LIMIT) / (FLOOR_Y - C_TOP_LIMIT - MAN_VISUAL_H);
-    const pct = Math.max(0, Math.min(1, fall));
+    const pct = Math.max(0, Math.min(1, (ceilY - C_TOP_LIMIT) / (CEIL_LOSE_Y - C_TOP_LIMIT)));
     ctx.fillStyle = '#000';
     ctx.fillRect(38, H - BTN_SIZE - 30, W - 76, 10);
     ctx.fillStyle = '#3a3a4a';
@@ -461,51 +469,57 @@
     ctx.fillRect(40, H - BTN_SIZE - 28, (W - 80) * pct, 6);
     ctx.fillStyle = '#ffe81f';
     ctx.font = '6px "Press Start 2P", monospace';
-    ctx.textAlign = 'center';
     ctx.fillText('TECHO', W / 2, H - BTN_SIZE - 36);
   }
 
   function drawButtons(ctx) {
-    // Botones traslúcidos (no estorbar la vista)
-    drawBtn(ctx, BTN_LEFT_X, BTN_Y, '←');
-    drawBtn(ctx, BTN_RIGHT_X, BTN_Y, '→');
-    let label;
-    if (holding) label = 'SOLTAR';
-    else {
-      const tgt = manitouCol + facing;
-      if (tgt < 0 || tgt >= COLS) label = '—';
-      else label = stacks[tgt] > 0 ? 'COGER' : '—';
-    }
-    drawBtn(ctx, BTN_ACT_X, BTN_Y, label, label === '—');
+    drawBtn(ctx, BTN_LEFT_X, '←', false);
+    drawBtn(ctx, BTN_RIGHT_X, '→', false);
+    const label = actionLabel();
+    drawBtn(ctx, BTN_ACT_X, label, label === '—');
   }
 
-  function drawBtn(ctx, x, y, label, disabled) {
+  function drawBtn(ctx, x, label, disabled) {
     ctx.save();
     ctx.globalAlpha = disabled ? 0.25 : 0.55;
     ctx.fillStyle = '#000';
-    ctx.fillRect(x, y, BTN_SIZE, BTN_SIZE);
+    ctx.fillRect(x, BTN_Y, BTN_SIZE, BTN_SIZE);
     ctx.globalAlpha = disabled ? 0.4 : 0.85;
     ctx.strokeStyle = '#ffe81f';
     ctx.lineWidth = 2;
-    ctx.strokeRect(x + 1, y + 1, BTN_SIZE - 2, BTN_SIZE - 2);
+    ctx.strokeRect(x + 1, BTN_Y + 1, BTN_SIZE - 2, BTN_SIZE - 2);
     ctx.fillStyle = '#ffe81f';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const fs = label.length <= 2 ? 28 : 10;
-    ctx.font = `${fs}px "Press Start 2P", monospace`;
-    ctx.fillText(label, x + BTN_SIZE / 2, y + BTN_SIZE / 2);
+    ctx.font = `${label.length <= 2 ? 28 : 10}px "Press Start 2P", monospace`;
+    ctx.fillText(label, x + BTN_SIZE / 2, BTN_Y + BTN_SIZE / 2);
     ctx.restore();
   }
 
-  function drawWinOverlay(ctx) {
+  function drawIntro(ctx) {
     ctx.save();
-    ctx.globalAlpha = Math.min(1, outcomeT * 0.9);
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillStyle = 'rgba(0,0,0,0.80)';
     ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#7af0a8';
-    ctx.font = '14px "Press Start 2P", monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('¡ESCAPADO!', W / 2, H / 2);
+    ctx.fillStyle = '#ffe81f';
+    ctx.font = '12px "Press Start 2P", monospace';
+    ctx.fillText('¡ATRAPADO!', W / 2, 116);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '8px "Press Start 2P", monospace';
+    const lines = [
+      'El techo baja sobre Pedrito',
+      'y las paredes lo encierran.',
+      '',
+      'Usa la Manitou para apilar',
+      'los escombros del suelo de',
+      'modo que pueda escapar por',
+      'la salida de la pared.',
+    ];
+    for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], W / 2, 150 + i * 18);
+    if (Math.floor(timer * 2) % 2 === 0) {
+      ctx.fillStyle = '#ffe81f';
+      ctx.fillText('TOCA PARA EMPEZAR', W / 2, H - 90);
+    }
     ctx.restore();
   }
 
@@ -520,8 +534,6 @@
     ctx.fillText('APLASTADO', W / 2, H / 2);
     ctx.restore();
   }
-
-  function lerp(a, b, t) { return a + (b - a) * t; }
 
   window.Loop.register('COMPACTOR', { enter, update, render });
 })();
