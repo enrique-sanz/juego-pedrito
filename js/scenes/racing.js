@@ -21,9 +21,18 @@
   const LANE_X1 = W - 36;
   const SCROLL_SPEED = 280;
 
-  let player, obstacles, timer, scroll, lose, win, hitFlash;
+  // Desenlace: la Manitou llega a la boca de la compactadora de residuos y cae.
+  const HATCH_X = LANE_X0;
+  const HATCH_W = LANE_X1 - LANE_X0;
+  const HATCH_H = 150;
+  const HATCH_TOP_TARGET = 410;          // posición de reposo de la boca
+  const FINALE_APPROACH = 1.6;           // s: la boca se acerca
+  const FINALE_FALL = 1.5;               // s: la Manitou cae dentro
+
+  let player, obstacles, timer, scroll, lose, hitFlash;
   let shelves, ceilLamps, floorStripeOffset;
   let spawnTimer, thrustT;
+  let finalePhase, finaleT, hatchTop;    // null mientras se corre normal
 
   function enter() {
     player = { x: W / 2 - PLAYER_W / 2, y: H - 100, w: PLAYER_W, h: PLAYER_H };
@@ -31,11 +40,13 @@
     timer = 0;
     scroll = 0;
     lose = false;
-    win = false;
     hitFlash = 0;
     spawnTimer = 0;
     thrustT = 0;
     floorStripeOffset = 0;
+    finalePhase = null;
+    finaleT = 0;
+    hatchTop = -HATCH_H;
 
     shelves = [];
     for (let i = 0; i < 8; i++) {
@@ -50,15 +61,16 @@
   }
 
   function update(dt) {
+    window.Effects.update(dt);
+
+    if (finalePhase) { updateFinale(dt); return; }
+
     timer += dt;
     scroll += SCROLL_SPEED * dt;
     thrustT += dt;
     floorStripeOffset = (floorStripeOffset + SCROLL_SPEED * dt) % 40;
-    window.Effects.update(dt);
 
-    // Parallax fondos
-    for (const sh of shelves)   { sh.y += 200 * dt; if (sh.y > H + 80) sh.y -= H + 200; }
-    for (const lp of ceilLamps) { lp.y += 240 * dt; if (lp.y > H + 20) { lp.y -= H + 80; lp.on = Math.random() < 0.8; } }
+    updateParallax(dt);
 
     // Control
     const p = window.Input.pointer;
@@ -94,16 +106,70 @@
 
     if (hitFlash > 0) hitFlash -= dt;
 
-    if (timer >= DURATION && !win) {
-      win = true;
-      window.Audio8.sfx('win');
-      setTimeout(() => window.Loop.setScene('NARRATIVE_3'), 900);
+    if (timer >= DURATION) {
+      startFinale();
+      return;
     }
     if (window.GameState.state.lives <= 0 && !lose && !window.GameState.state.infiniteLives) {
       lose = true;
       setTimeout(() => window.Loop.setScene('DEFEAT'), 700);
     }
   }
+
+  function updateParallax(dt) {
+    for (const sh of shelves)   { sh.y += 200 * dt; if (sh.y > H + 80) sh.y -= H + 200; }
+    for (const lp of ceilLamps) { lp.y += 240 * dt; if (lp.y > H + 20) { lp.y -= H + 80; lp.on = Math.random() < 0.8; } }
+  }
+
+  // --- Desenlace: llegada a la compactadora y caída dentro ---
+  function startFinale() {
+    finalePhase = 'approach';
+    finaleT = 0;
+    obstacles.length = 0;            // limpia la pista para la llegada
+    window.Audio8.sfx('win');
+  }
+
+  function fallProgress() {
+    return finalePhase === 'fall' ? Math.min(1, finaleT / FINALE_FALL) : 0;
+  }
+
+  function updateFinale(dt) {
+    finaleT += dt;
+
+    if (finalePhase === 'approach') {
+      // el almacén sigue desplazándose y la boca se acerca desde arriba
+      scroll += SCROLL_SPEED * dt;
+      floorStripeOffset = (floorStripeOffset + SCROLL_SPEED * dt) % 40;
+      updateParallax(dt);
+      const e = easeOut(Math.min(1, finaleT / FINALE_APPROACH));
+      hatchTop = -HATCH_H + (HATCH_TOP_TARGET - (-HATCH_H)) * e;
+      // la Manitou se centra en el pasillo y avanza hacia la boca
+      const targetX = W / 2 - PLAYER_W / 2;
+      player.x += (targetX - player.x) * Math.min(1, dt * 4);
+      // propulsores
+      thrustT += dt;
+      if (thrustT > 0.04) {
+        thrustT = 0;
+        window.Effects.thrust(player.x + 6,            player.y + PLAYER_H, '#ffae40');
+        window.Effects.thrust(player.x + PLAYER_W - 6, player.y + PLAYER_H, '#ffae40');
+      }
+      if (finaleT >= FINALE_APPROACH) {
+        finalePhase = 'fall';
+        finaleT = 0;
+        hatchTop = HATCH_TOP_TARGET;
+        player.x = W / 2 - PLAYER_W / 2;
+        window.Audio8.sfx('hit');
+        window.Effects.dust(W / 2, HATCH_TOP_TARGET + 30, { count: 16, speed: 70, color: '#6a5a40', colorAlt: '#3a3030' });
+      }
+    } else if (finalePhase === 'fall') {
+      if (finaleT >= FINALE_FALL) {
+        finalePhase = 'done';
+        window.Loop.setScene('NARRATIVE_3');
+      }
+    }
+  }
+
+  function easeOut(t) { return 1 - Math.pow(1 - Math.max(0, Math.min(1, t)), 3); }
 
   // ------- Obstáculos: tipo, dimensiones y dibujo ------
   // Cada obstáculo tiene un hitbox AABB (x,y,w,h) y un drawer.
@@ -180,18 +246,25 @@
       ctx.fillRect(0, 0, W, H);
     }
 
+    if (finalePhase) drawCompactorHatch(ctx);
+
     // Obstáculos
     for (const o of obstacles) {
       drawObstacle(ctx, o);
     }
 
-    drawPlayer(ctx);
+    if (finalePhase === 'fall') drawPlayerFalling(ctx);
+    else drawPlayer(ctx);
+
+    if (finalePhase) drawCompactorRimFront(ctx);
+
     window.Effects.render(ctx);
 
     window.NarrativeHUD.drawLives(ctx);
 
     // Barra de progreso
-    const pw = (W - 80) * Math.min(1, timer / DURATION);
+    const prog = finalePhase ? 1 : Math.min(1, timer / DURATION);
+    const pw = (W - 80) * prog;
     ctx.fillStyle = '#000';
     ctx.fillRect(38, H - 20, W - 76, 8);
     ctx.fillStyle = '#3a3a4a';
@@ -201,8 +274,82 @@
     ctx.fillStyle = '#ffe81f';
     ctx.font = '8px "Press Start 2P", monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('ALMACÉN', W / 2, H - 26);
+    ctx.fillText(finalePhase ? 'COMPACTADORA' : 'ALMACÉN', W / 2, H - 26);
     ctx.textAlign = 'left';
+  }
+
+  function lerp(a, b, t) { return a + (b - a) * Math.max(0, Math.min(1, t)); }
+
+  // Boca de la compactadora: foso oscuro con borde metálico, franjas de aviso,
+  // rótulo RESIDUOS y dientes trituradores al fondo.
+  function drawCompactorHatch(ctx) {
+    const x = HATCH_X, y = hatchTop, w = HATCH_W, h = HATCH_H;
+
+    // Interior (gradiente a negro = profundidad)
+    const grad = ctx.createLinearGradient(0, y, 0, y + h);
+    grad.addColorStop(0,   '#15151a');
+    grad.addColorStop(0.5, '#070709');
+    grad.addColorStop(1,   '#000000');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x, y, w, h);
+
+    // Dientes trituradores al fondo del foso
+    ctx.fillStyle = '#43434c';
+    const teeth = 9, tw = w / teeth;
+    for (let i = 0; i < teeth; i++) {
+      ctx.beginPath();
+      ctx.moveTo(x + i * tw,        y + h - 2);
+      ctx.lineTo(x + i * tw + tw / 2, y + h - 18);
+      ctx.lineTo(x + (i + 1) * tw,  y + h - 2);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Borde metálico superior (lejano) con franjas amarillas/negras
+    drawHazardRim(ctx, x, y - 8, w, 10);
+
+    // Rótulo RESIDUOS sobre el borde
+    ctx.fillStyle = '#ffd040';
+    ctx.font = '9px "Press Start 2P", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('RESIDUOS', x + w / 2, y - 14);
+    ctx.textAlign = 'left';
+  }
+
+  // Borde cercano (inferior), se dibuja DESPUÉS de la Manitou para ocluir la
+  // caída como si entrara por el hueco.
+  function drawCompactorRimFront(ctx) {
+    drawHazardRim(ctx, HATCH_X, hatchTop + HATCH_H - 2, HATCH_W, 10);
+  }
+
+  function drawHazardRim(ctx, x, y, w, h) {
+    ctx.fillStyle = '#3a3a40';
+    ctx.fillRect(x - 4, y, w + 8, h);
+    const seg = 14;
+    for (let xx = x; xx < x + w; xx += seg) {
+      ctx.fillStyle = (Math.floor((xx - x) / seg) % 2 === 0) ? '#ffd040' : '#1a1a1a';
+      ctx.fillRect(xx, y + 2, seg - 2, h - 4);
+    }
+  }
+
+  function drawPlayerFalling(ctx) {
+    const p = easeOut(fallProgress());
+    const cy = lerp(player.y + PLAYER_H / 2, hatchTop + HATCH_H * 0.45, p);
+    const scaleK = 1 - 0.7 * p;
+    const alpha = p < 0.75 ? 1 : Math.max(0, 1 - (p - 0.75) / 0.25);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(HATCH_X + 6, hatchTop + 6, HATCH_W - 12, HATCH_H - 12);
+    ctx.clip();
+    if (window.Vehicles && window.Vehicles.isReady()) {
+      const w = 48 * scaleK;
+      window.Vehicles.drawManitouTop(ctx, W / 2, cy, w, { rotation: 0.22 * p, alpha });
+    } else {
+      ctx.globalAlpha = alpha;
+      window.Characters.drawXwing(ctx, W / 2 - 12 * scaleK, cy - 10 * scaleK, 2 * scaleK);
+    }
+    ctx.restore();
   }
 
   function drawWarehouseFloor(ctx) {
