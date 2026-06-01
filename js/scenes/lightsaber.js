@@ -1,14 +1,13 @@
 // Pantalla 4: duelo final con perspectiva vertical cenital.
 // Kike Vader arriba, Pedrito abajo, Marian observando desde pasarela lateral.
 //
-// Movimiento únicamente lateral (izquierda / derecha) y un botón de ataque
-// (estocada vertical hacia el rival). Hay impacto si en el instante del hit
-// los ejes X de ambos están suficientemente alineados (THRUST_RANGE_X).
+// Movimiento únicamente lateral. Hay impacto si en el instante del hit los ejes
+// X de ambos están suficientemente alineados (THRUST_RANGE_X).
 //
-// Controles (3 botones grandes pensados para móvil):
-//   ←   bottom-left    mover a la izquierda
-//   ATAC bottom-center  estocada hacia el rival
-//   →   bottom-right   mover a la derecha
+// Controles móvil (táctil directo, sin botones):
+//   - Toca/arrastra el dedo por la pantalla → Pedrito camina hacia esa columna.
+//   - Golpea solo: lanza estocada en cada toque nuevo y, mientras tocas, sigue
+//     golpeando automáticamente al acercarse a Kike (regulado por el cooldown).
 //
 // Teclado: ←/A izquierda, →/D derecha, Z/Espacio atacar.
 (function () {
@@ -44,13 +43,8 @@
   // Plataforma de Marian (sigue siendo lateral izquierda, profundidad media)
   const MARIAN = { x: 12, feetY: 332, scale: 1.5 };
 
-  // --- Botones ---
-  const BTN_W = 100, BTN_H = 92;
-  const BTN_Y = H - BTN_H - 8;
-  const BTN_LEFT  = { id: 'left',  x: 8,              y: BTN_Y, w: BTN_W, h: BTN_H, label: '←' };
-  const BTN_ATK   = { id: 'atk',   x: (W - BTN_W) / 2, y: BTN_Y, w: BTN_W, h: BTN_H, label: 'ATAC' };
-  const BTN_RIGHT = { id: 'right', x: W - BTN_W - 8,  y: BTN_Y, w: BTN_W, h: BTN_H, label: '→' };
-  const BUTTONS = [BTN_LEFT, BTN_ATK, BTN_RIGHT];
+  // Margen inferior reservado para el texto de ayuda táctil.
+  const HINT_MARGIN = 26;
 
   // --- Estado ---
   let ped, kike;
@@ -86,7 +80,7 @@
     };
   }
 
-  function held(btn) { return window.Input.anyPointerInside(btn); }
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
   // --- Update ---
   function update(dt) {
@@ -100,20 +94,31 @@
     advanceFighter(ped, dt);
     advanceFighter(kike, dt);
 
-    const wantLeft  = held(BTN_LEFT)  || window.Input.isKey('ArrowLeft')  || window.Input.isKey('KeyA');
-    const wantRight = held(BTN_RIGHT) || window.Input.isKey('ArrowRight') || window.Input.isKey('KeyD');
-    const atk = held(BTN_ATK) || window.Input.isKey('KeyZ') || window.Input.isKey('Space');
-    const atkTap = atk && !prevAttack;
-    prevAttack = atk;
-
     if (ped.stun <= 0) {
       let speed = PED_SPEED;
-      if (ped.state === 'thrusting') speed *= 0.2;
+      if (ped.state === 'thrusting') speed *= 0.6;
+
+      // --- Móvil: Pedrito sigue el dedo; golpea solo al tocar y al acercarse ---
+      const p = window.Input.pointer;
+      if (p.isDown) {
+        const targetX = clamp(p.x, PED_X_MIN, PED_X_MAX);
+        const dx = targetX - ped.x;
+        const step = speed * dt;
+        ped.x = Math.abs(dx) <= step ? targetX : ped.x + Math.sign(dx) * step;
+        const nearKike = Math.abs(ped.x - kike.x) < THRUST_RANGE_X * 1.5;
+        if (canAttack(ped) && (p.justPressed || nearKike)) startThrust(ped);
+      }
+
+      // --- Teclado (desktop) ---
+      const wantLeft  = window.Input.isKey('ArrowLeft')  || window.Input.isKey('KeyA');
+      const wantRight = window.Input.isKey('ArrowRight') || window.Input.isKey('KeyD');
       if (wantLeft)  ped.x -= speed * dt;
       if (wantRight) ped.x += speed * dt;
-      ped.x = Math.max(PED_X_MIN, Math.min(PED_X_MAX, ped.x));
+      ped.x = clamp(ped.x, PED_X_MIN, PED_X_MAX);
 
-      if (atkTap && canAttack(ped)) startThrust(ped);
+      const atk = window.Input.isKey('KeyZ') || window.Input.isKey('Space');
+      if (atk && !prevAttack && canAttack(ped)) startThrust(ped);
+      prevAttack = atk;
     }
 
     updateAI(dt);
@@ -215,7 +220,7 @@
     drawPedFighter(ctx);
     window.Effects.render(ctx);
     drawHUD(ctx);
-    drawButtons(ctx);
+    drawHint(ctx);
 
     if (hitFlash > 0) {
       ctx.fillStyle = `rgba(255,40,40,${(hitFlash * 0.55).toFixed(2)})`;
@@ -285,7 +290,7 @@
   function drawCorridorFloor(ctx) {
     // Suelo de baldosas en el área inferior donde está Pedrito.
     const floorTopY = 360;
-    const floorBottomY = H - BTN_H - 16; // hasta justo encima de los botones
+    const floorBottomY = H - HINT_MARGIN; // hasta justo encima del texto de ayuda
     ctx.fillStyle = '#1c1c2a';
     ctx.fillRect(0, floorTopY, W, floorBottomY - floorTopY);
 
@@ -485,44 +490,18 @@
     ctx.textAlign = 'left';
   }
 
-  function drawButtons(ctx) {
-    for (const b of BUTTONS) drawButton(ctx, b);
-  }
-
-  function drawButton(ctx, b) {
-    const isHeld = held(b);
-    const color = colorFor(b, isHeld);
+  // Texto de ayuda táctil (parpadea suave) en el borde inferior.
+  function drawHint(ctx) {
+    if (ended) return;
+    const alpha = window.Input.pointer.isDown ? 0.35 : 0.5 + Math.sin(plasmaT * 3) * 0.25;
     ctx.save();
-    ctx.globalAlpha = isHeld ? 1 : 0.82;
-    // base
-    ctx.fillStyle = '#0a0a14';
-    ctx.fillRect(b.x, b.y, b.w, b.h);
-    // highlight superior
-    ctx.fillStyle = '#1a1a2a';
-    ctx.fillRect(b.x, b.y, b.w, 6);
-    // borde grueso
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = color;
-    ctx.strokeRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-    ctx.strokeRect(b.x + 5, b.y + 5, b.w - 10, b.h - 10);
-    // texto
-    ctx.fillStyle = color;
-    ctx.font = (b.label.length <= 2 ? '34px' : '14px') + ' "Press Start 2P", monospace';
+    ctx.globalAlpha = Math.max(0.2, alpha);
+    ctx.fillStyle = '#ffe081';
+    ctx.font = '8px "Press Start 2P", monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2 + (b.label.length <= 2 ? 14 : 6));
+    ctx.fillText('TOCA Y ARRASTRA · GOLPEA SOLO', W / 2, H - 10);
     ctx.textAlign = 'left';
     ctx.restore();
-  }
-
-  function colorFor(b, isHeld) {
-    switch (b.id) {
-      case 'left':  return isHeld ? '#ffffff' : '#cdcdd8';
-      case 'right': return isHeld ? '#ffffff' : '#cdcdd8';
-      case 'atk':   return isHeld ? '#ffe080' : '#c89020';
-    }
-    return '#fff';
   }
 
   window.Loop.register('LIGHTSABER', { enter, update, render });
