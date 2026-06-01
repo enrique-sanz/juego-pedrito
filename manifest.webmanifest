@@ -1,0 +1,11 @@
+{
+  "name": "Juego de Pedrito",
+  "short_name": "Pedrito",
+  "description": "Aventura retro estilo Star Wars protagonizada por Pedrito.",
+  "lang": "es",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#000000",
+  "theme_color": "#000000"
+}

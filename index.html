@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#000000" />
+  <title>Juego de Pedrito</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="orientation-lock">
+    <div>
+      <p>Gira el dispositivo</p>
+      <p class="small">Este juego se juega en vertical</p>
+    </div>
+  </div>
+
+  <main id="stage">
+    <canvas id="game" width="360" height="640" aria-label="Juego de Pedrito"></canvas>
+
+    <button id="start-overlay" type="button">
+      <span>PULSA PARA JUGAR</span>
+      <span class="small">Con sonido 8-bit</span>
+    </button>
+
+    <div id="debug-panel" hidden>
+      <header>DEBUG</header>
+      <label>
+        Ir a pantalla
+        <select id="debug-scene"></select>
+      </label>
+      <button id="debug-go" type="button">Ir</button>
+      <label class="check">
+        <input type="checkbox" id="debug-infinite" />
+        Vidas infinitas
+      </label>
+      <label class="check">
+        <input type="checkbox" id="debug-mute" />
+        Silenciar
+      </label>
+    </div>
+  </main>
+
+  <!-- Motor -->
+  <script src="js/engine/state.js"></script>
+  <script src="js/engine/input.js"></script>
+  <script src="js/engine/loop.js"></script>
+  <script src="js/engine/stars.js"></script>
+  <script src="js/engine/characters.js"></script>
+  <script src="js/engine/audio.js"></script>
+  <script src="js/engine/debug.js"></script>
+
+  <!-- Escenas -->
+  <script src="js/scenes/intro.js"></script>
+  <script src="js/scenes/narrative.js"></script>
+  <script src="js/scenes/invaders.js"></script>
+  <script src="js/scenes/racing.js"></script>
+  <script src="js/scenes/compactor.js"></script>
+  <script src="js/scenes/lightsaber.js"></script>
+  <script src="js/scenes/victory.js"></script>
+  <script src="js/scenes/defeat.js"></script>
+
+  <!-- Bootstrap -->
+  <script src="js/main.js"></script>
+</body>
+</html>

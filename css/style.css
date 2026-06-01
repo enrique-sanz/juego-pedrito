@@ -1,0 +1,170 @@
+:root {
+  --ink: #ffe81f;        /* amarillo Star Wars */
+  --ink-dim: #b3a214;
+  --bg: #000;
+  --panel: rgba(0, 0, 0, 0.82);
+  --panel-border: #ffe81f;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Press Start 2P', monospace;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #000;
+}
+
+#game {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  max-width: 100vw;
+  max-height: 100vh;
+  aspect-ratio: 360 / 640;
+  background: #000;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  touch-action: none;
+}
+
+/* En pantallas anchas mantenemos la proporción vertical */
+@media (min-aspect-ratio: 360/640) {
+  #game {
+    width: auto;
+    height: 100vh;
+  }
+}
+
+/* Overlay inicial para destrabar audio (iOS) */
+#start-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: rgba(0, 0, 0, 0.92);
+  color: var(--ink);
+  border: none;
+  font-family: inherit;
+  font-size: 14px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  z-index: 5;
+  animation: blink 1.4s infinite;
+}
+
+#start-overlay .small {
+  font-size: 8px;
+  color: var(--ink-dim);
+  animation: none;
+}
+
+#start-overlay.hidden {
+  display: none;
+}
+
+@keyframes blink {
+  50% { opacity: 0.55; }
+}
+
+/* Bloqueo de orientación horizontal */
+#orientation-lock {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: #000;
+  color: var(--ink);
+  z-index: 10;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+}
+
+#orientation-lock .small {
+  font-size: 8px;
+  color: var(--ink-dim);
+  margin-top: 10px;
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  #orientation-lock { display: flex; }
+  #stage { display: none; }
+}
+
+/* Panel debug */
+#debug-panel {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  z-index: 20;
+  background: var(--panel);
+  border: 2px solid var(--panel-border);
+  color: var(--ink);
+  padding: 10px 12px;
+  font-size: 9px;
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 70vw;
+}
+
+#debug-panel[hidden] { display: none; }
+
+#debug-panel header {
+  font-size: 10px;
+  color: var(--ink);
+  letter-spacing: 2px;
+  border-bottom: 1px dashed var(--ink-dim);
+  padding-bottom: 4px;
+}
+
+#debug-panel select,
+#debug-panel button {
+  font-family: inherit;
+  font-size: 9px;
+  background: #000;
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+#debug-panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#debug-panel label.check {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+#debug-panel input[type="checkbox"] {
+  accent-color: var(--ink);
+}
