@@ -1,5 +1,8 @@
-// Bootstrap: vincula el canvas, inicializa motor + debug, y arranca el juego
-// tras la primera interacción del usuario (necesario para WebAudio en iOS).
+// Bootstrap: vincula el canvas, inicializa motor + debug y muestra una mini
+// pantalla de inicio (título + "toca para empezar"). El audio web no puede
+// sonar sin un gesto del usuario (política de autoplay / iOS), así que ese
+// primer toque desbloquea el sonido y arranca el crawl con música desde el
+// primer fotograma.
 (function () {
   'use strict';
 
@@ -13,26 +16,24 @@
     window.Debug.init(canvas);
     window.Loop.start(canvas);
 
-    // Por defecto arrancamos en una "pantalla de espera" mostrando estrellas.
-    // Hasta que el usuario toque el overlay, no se desbloquea el audio ni se
-    // entra en la intro (Safari/iOS lo exige).
-    window.Loop.setScene('INTRO_CRAWL'); // se renderiza detrás del overlay
+    window.Audio8.init();
+    // Se renderiza el crawl detrás del overlay (mudo); al tocar se reinicia
+    // con la música ya desbloqueada.
+    window.GameState.reset();
+    window.Loop.setScene('INTRO_CRAWL');
 
     let started = false;
     const startGame = () => {
       if (started) return;
       started = true;
-      window.Audio8.init();
       overlay.classList.add('hidden');
-      overlay.style.display = 'none';
-      // Forzar reentrada para que la melodía arranque limpia
+      window.Audio8.unlock();
       window.GameState.reset();
-      window.Loop.setScene('INTRO_CRAWL');
+      window.Loop.setScene('INTRO_CRAWL'); // reinicio limpio con música
     };
 
     overlay.addEventListener('click', startGame);
     overlay.addEventListener('touchend', (e) => { e.preventDefault(); startGame(); }, { passive: false });
-    // En desktop también vale el teclado
     window.addEventListener('keydown', (e) => {
       if (started) return;
       if (e.code === 'Enter' || e.code === 'Space' || e.code === 'NumpadEnter') {

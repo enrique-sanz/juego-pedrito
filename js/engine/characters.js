@@ -99,11 +99,28 @@
   // primera fila del sprite que pertenece al cuerpo.
   const HEAD_BODY_ROW = 9;
 
+  // Dibuja la foto-cabeza sobre el cuerpo. Por defecto la centra en `cyRows`
+  // (comportamiento histórico: cabeza grande que cubre el sprite). Si en `opts`
+  // llega `headCols`, se usa ese ancho en su lugar; y si `anchorChin` es true,
+  // la cabeza se ancla por la BARBILLA al borde superior del cuerpo
+  // (independiente del aspect de la foto), para que quede un cuerpecito visible
+  // debajo en vez de una cabeza flotante.
   function drawFaceOver(ctx, who, x, y, scale, wCols, cyRows, opts) {
     if (!window.Faces || !window.Faces.isReady(who)) return false;
+    const o = opts || {};
+    const cols = o.headCols != null ? o.headCols : wCols;
+    const w = cols * scale;
     const cx = x + 7 * scale;          // centro horizontal del sprite 14 wide
-    const cy = y + cyRows * scale;
-    return window.Faces.drawHead(ctx, who, cx, cy, wCols * scale, opts);
+    let cy;
+    if (o.anchorChin) {
+      const aspect = window.Faces.aspectOf(who);
+      const chinRow = o.chinRow != null ? o.chinRow : HEAD_BODY_ROW;
+      cy = y + chinRow * scale - (w * aspect) / 2;
+    } else {
+      const rows = o.headRow != null ? o.headRow : cyRows;
+      cy = y + rows * scale;
+    }
+    return window.Faces.drawHead(ctx, who, cx, cy, w, opts);
   }
 
   function drawPedrito(ctx, x, y, scale, frame, opts) {

@@ -49,6 +49,18 @@
     window.GameState.state.audioReady = true;
   }
 
+  // Desbloqueo de audio: crea el contexto, lo reanuda si el navegador lo dejó
+  // suspendido (política de autoplay / iOS) y arranca la melodía. Idempotente.
+  function unlock() {
+    init();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(startTheme).catch(() => {});
+    } else {
+      startTheme();
+    }
+  }
+
   function isMuted() { return window.GameState.state.muted; }
 
   // Toca una sola nota con timbre 8-bit (square + leve sub-osc).
@@ -173,10 +185,12 @@
 
   window.Audio8 = {
     init,
+    unlock,
     startTheme,
     stopTheme,
     sfx,
     setMuted,
     get ready() { return !!ctx; },
+    get running() { return !!ctx && ctx.state === 'running'; },
   };
 })();

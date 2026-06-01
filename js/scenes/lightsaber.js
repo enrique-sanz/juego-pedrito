@@ -342,7 +342,9 @@
     ctx.fillRect(0, fy - 14, 64, 2);
 
     const sprH = 20 * s;
-    window.Characters.drawMarian(ctx, x, fy - sprH, s, { facing: 1 });
+    // Cara de Marian al doble de tamaño (headCols 28 → 56) para reconocerla
+    // desde la pasarela lateral.
+    window.Characters.drawMarian(ctx, x, fy - sprH, s, { facing: 1, headCols: 56 });
 
     ctx.fillStyle = '#ffe81f';
     ctx.font = '7px "Press Start 2P", monospace';
@@ -350,6 +352,10 @@
     ctx.fillText('PRINCESA', x - 2, fy + 18);
     ctx.fillText('MARIAN',  x - 2, fy + 28);
   }
+
+  // Cabeza-foto reducida y anclada por barbilla → queda un cuerpecito visible.
+  const HEAD_OPTS_PED  = { headCols: 20, anchorChin: true };
+  const HEAD_OPTS_KIKE = { headCols: 20, anchorChin: true };
 
   function drawPedFighter(ctx) {
     const sc = PED_SCALE;
@@ -367,8 +373,14 @@
     ctx.save();
     if (ped.shake > 0) ctx.translate((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4);
     const bobOffset = ped.state === 'idle' ? Math.sin(bobT * 4) * 1 : 0;
-    window.Characters.drawPedrito(ctx, baseX, baseY + bobOffset, sc, 'idle');
-    drawThrustingSaber(ctx, ped, baseX + sprW * 0.78, baseY + sprH * 0.42 + bobOffset, '#3aff60', /*upward*/ true);
+    const top = baseY + bobOffset;
+    window.Characters.drawPedrito(ctx, baseX, top, sc, 'idle', HEAD_OPTS_PED);
+
+    // Empuñadura a la altura del pecho (debajo de la cara) + brazos.
+    const gx = ped.x, gy = top + 13 * sc;
+    drawSaberArms(ctx, top + 11 * sc, baseX + 4 * sc, baseX + 10 * sc, gx, gy,
+      '#a76a3a', '#f1c27d');
+    drawThrustingSaber(ctx, ped, gx, gy, '#3aff60', /*upward*/ true);
     ctx.restore();
   }
 
@@ -387,25 +399,57 @@
     ctx.save();
     if (kike.shake > 0) ctx.translate((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3);
     const bobOffset = kike.state === 'idle' ? Math.sin(bobT * 4 + 1.2) * 1 : 0;
-    window.Characters.drawKikeVader(ctx, baseX, baseY + bobOffset, sc);
-    drawThrustingSaber(ctx, kike, baseX + sprW * 0.22, baseY + sprH * 0.42 + bobOffset, '#ff3a3a', /*upward*/ false);
+    const top = baseY + bobOffset;
+    window.Characters.drawKikeVader(ctx, baseX, top, sc, HEAD_OPTS_KIKE);
+
+    const gx = kike.x, gy = top + 13 * sc;
+    drawSaberArms(ctx, top + 11 * sc, baseX + 4 * sc, baseX + 10 * sc, gx, gy,
+      '#101010', '#1a1a1a');
+    drawThrustingSaber(ctx, kike, gx, gy, '#ff3a3a', /*upward*/ false);
+    ctx.restore();
+  }
+
+  // Dos antebrazos desde los hombros hacia una empuñadura central + dos puños.
+  function drawSaberArms(ctx, shoulderY, leftX, rightX, gx, gy, sleeve, hand) {
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = sleeve;
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(leftX, shoulderY);  ctx.lineTo(gx - 4, gy);
+    ctx.moveTo(rightX, shoulderY); ctx.lineTo(gx + 4, gy);
+    ctx.stroke();
+    // puños (dos manos agarrando la empuñadura)
+    ctx.fillStyle = hand;
+    ctx.fillRect(gx - 9, gy - 5, 8, 11);
+    ctx.fillRect(gx + 1, gy - 5, 8, 11);
+    // nudillos (highlight) + sombra inferior para dar volumen
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillRect(gx - 9, gy - 5, 8, 2);
+    ctx.fillRect(gx + 1, gy - 5, 8, 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.30)';
+    ctx.fillRect(gx - 9, gy + 4, 18, 2);
     ctx.restore();
   }
 
   // Sable con longitud fija + extensión brusca en thrust. La punta apunta
   // hacia el rival (arriba para Pedrito, abajo para Kike).
   function drawThrustingSaber(ctx, f, hx, hy, color, upward) {
-    let len = 50;
-    let lateral = 0;
+    let len = 56;
+    let tilt = 0.45;   // en reposo la hoja sube ladeada (junto a la cara, no por delante)
+    let sway = 0;
     if (f.state === 'thrusting') {
       const p = Math.min(1, f.thrustT / THRUST_DUR);
       const env = p < 0.35 ? (p / 0.35) : (1 - (p - 0.35) / 0.65);
       len = len + env * 150;
+      tilt = 0.45 * (1 - env);   // al estocar se endereza hacia el rival
     } else {
-      lateral = Math.sin(bobT * 3 + (f === kike ? 0.7 : 0)) * 3;
+      sway = Math.sin(bobT * 3 + (f === kike ? 0.7 : 0)) * 3;
     }
     const dir = upward ? -1 : 1;
-    window.Characters.drawSaber(ctx, hx, hy, hx + lateral, hy + dir * len, color);
+    const sideSign = upward ? 1 : -1;
+    const tipX = hx + sway + sideSign * len * tilt;
+    window.Characters.drawSaber(ctx, hx, hy, tipX, hy + dir * len, color);
   }
 
   // --- HUD + botones ---

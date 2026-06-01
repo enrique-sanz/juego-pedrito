@@ -8,7 +8,7 @@
   let starsFar, starsNear;
   let nebula;
   let lines, scrollY, finished, fetchedOnce;
-  let logoAlpha, t;
+  let logoAlpha, t, primed;
 
   const FALLBACK = [
     'Hace mucho tiempo, en una galaxia',
@@ -42,8 +42,11 @@
     logoAlpha = 1;
     t = 0;
     fetchedOnce = false;
+    // Si el audio ya suena (autoplay permitido), el primer toque salta el crawl.
+    // Si no, el primer toque solo arranca la música y NO salta.
+    primed = window.Audio8.running;
     loadStory();
-    window.Audio8.startTheme();
+    window.Audio8.unlock();
   }
 
   function exit() {
@@ -95,7 +98,8 @@
     }
 
     if (window.Input.actionJustPressed()) {
-      finished = true;
+      if (!primed) { primed = true; window.Audio8.unlock(); }
+      else finished = true;
     }
 
     if (finished) {
