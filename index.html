@@ -48,29 +48,40 @@
     </div>
   </main>
 
-  <!-- Motor -->
-  <script src="js/engine/state.js"></script>
-  <script src="js/engine/input.js"></script>
-  <script src="js/engine/loop.js"></script>
-  <script src="js/engine/stars.js"></script>
-  <script src="js/engine/effects.js"></script>
-  <script src="js/engine/faces.js"></script>
-  <script src="js/engine/vehicles.js"></script>
-  <script src="js/engine/characters.js"></script>
-  <script src="js/engine/audio.js"></script>
-  <script src="js/engine/debug.js"></script>
-
-  <!-- Escenas -->
-  <script src="js/scenes/intro.js"></script>
-  <script src="js/scenes/narrative.js"></script>
-  <script src="js/scenes/invaders.js"></script>
-  <script src="js/scenes/racing.js"></script>
-  <script src="js/scenes/compactor.js"></script>
-  <script src="js/scenes/lightsaber.js"></script>
-  <script src="js/scenes/victory.js"></script>
-  <script src="js/scenes/defeat.js"></script>
-
-  <!-- Bootstrap -->
-  <script src="js/main.js"></script>
+  <!-- Carga de scripts con cache-busting: ?v=<timestamp> evita que el
+       navegador o GitHub Pages sirvan versiones antiguas. async=false
+       conserva el orden de ejecución (motor -> escenas -> bootstrap). -->
+  <script>
+    (function () {
+      var v = Date.now();
+      var srcs = [
+        'js/engine/state.js',
+        'js/engine/input.js',
+        'js/engine/loop.js',
+        'js/engine/stars.js',
+        'js/engine/effects.js',
+        'js/engine/faces.js',
+        'js/engine/vehicles.js',
+        'js/engine/characters.js',
+        'js/engine/audio.js',
+        'js/engine/debug.js',
+        'js/scenes/intro.js',
+        'js/scenes/narrative.js',
+        'js/scenes/invaders.js',
+        'js/scenes/racing.js',
+        'js/scenes/compactor.js',
+        'js/scenes/lightsaber.js',
+        'js/scenes/victory.js',
+        'js/scenes/defeat.js',
+        'js/main.js',
+      ];
+      srcs.forEach(function (src) {
+        var s = document.createElement('script');
+        s.src = src + '?v=' + v;
+        s.async = false;
+        document.head.appendChild(s);
+      });
+    })();
+  </script>
 </body>
 </html>
