@@ -213,10 +213,38 @@
     if (window.Faces && window.Faces.isReady('kike')) {
       const body = KIKE_IDLE.slice(HEAD_BODY_ROW);
       drawPixels(ctx, x, y + HEAD_BODY_ROW * scale, scale, body, KIKE_PALETTE);
-      drawFaceOver(ctx, 'kike', x, y, scale, 28, 3, opts);
+      const wCols = 28, cyRows = 3;
+      const w = wCols * scale;
+      const h = w * window.Faces.aspectOf('kike');
+      const cx = x + 7 * scale;
+      const cy = y + cyRows * scale;
+      drawFaceOver(ctx, 'kike', x, y, scale, wCols, cyRows, opts);
+      // El texto del logo en la gorra se vuelve ilegible al reescalar la foto;
+      // pintamos un label sintético "MANITOU" en la parte alta de la cabeza
+      // para que se lea claramente.
+      drawCapLabel(ctx, cx, cy - h * 0.34, w * 0.66);
     } else {
       drawPixels(ctx, x, y, scale, KIKE_IDLE, KIKE_PALETTE);
     }
+  }
+
+  function drawCapLabel(ctx, cx, cy, w) {
+    const fontPx = Math.max(5, Math.round(w * 0.22));
+    ctx.save();
+    ctx.font = `${fontPx}px "Press Start 2P", monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // contorno negro para destacar sobre la gorra oscura
+    ctx.fillStyle = '#000';
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        if (dx === 0 && dy === 0) continue;
+        ctx.fillText('MANITOU', cx + dx, cy + dy);
+      }
+    }
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('MANITOU', cx, cy);
+    ctx.restore();
   }
 
   // ============ SABLE LÁSER ============

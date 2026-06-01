@@ -27,8 +27,8 @@
     'mortales para enfrentarse cara',
     'a cara con el villano.',
     '',
-    'Que la Fuerza... y un buen Manitou,',
-    'le acompañen.',
+    'Que la Fuerza... y una buena',
+    'Manitou Milenaria, le acompañen.',
   ];
 
   function enter() {

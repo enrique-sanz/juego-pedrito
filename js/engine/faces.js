@@ -1,68 +1,33 @@
-// Carga las fotos reales de Pedrito, Marian y Kike y las recorta a su silueta
-// real con:
-//   1) Un polígono trazado a mano sobre cada PNG fuente (densidad ~30-36
-//      puntos siguiendo pelo, mejillas, mentón y barba).
-//   2) Para Marian, un color-key conservador adicional dentro del polígono
-//      que limpia el fondo morado oscuro entre los rizos del pelo (donde la
-//      línea recta del polígono no puede seguir cada bucle).
+// Carga las fotos reales de Pedrito, Marian y Kike y construye una silueta
+// pixel-perfect mediante segmentación automática:
 //
-// El motor renderiza con imageSmoothingEnabled=false (look pixel-art). En el
-// draw activamos suavizado temporal para que la cara no salga blocky al
-// reescalar.
+//   1) Calcula un mapa de magnitud de gradiente (Sobel L1) sobre la imagen.
+//   2) Lanza un flood-fill BFS desde TODOS los píxeles del borde del PNG
+//      (que son fondo por definición). El BFS avanza a un vecino solo si:
+//        - el gradiente en el vecino está por debajo de `edge` (no cruza
+//          contornos fuertes como pelo / mejilla / gorra), Y
+//        - la diferencia de color con el píxel actual es pequeña (permite
+//          gradientes suaves de fondo, p.ej. cielo → césped).
+//   3) Todos los píxeles alcanzados son fondo → alpha 0. El resto (cara,
+//      pelo, gorra, hombros si están bien recortados) queda intacto.
+//   4) Recorta al bbox del foreground.
+//
+// No hay polígonos a mano: el contorno sigue literalmente la silueta de cada
+// foto. Si la segmentación falla (foreground < 8% del área), se devuelve
+// canvas:null y characters.js dibuja la versión codificada como fallback.
 (function () {
   'use strict';
 
-  // Polígonos en coordenadas de la PNG fuente (orden horario, cierre implícito).
+  // Parámetros afinados por foto:
+  //   edge:      umbral del gradiente que corta el flood-fill (más alto => más
+  //              permisivo, más pintura quitada). Sobel L1 ≈ 0..1530.
+  //   colorStep: máxima diferencia L1 RGB entre píxel y vecino para considerar
+  //              que pertenecen al mismo "trozo" de fondo. Permite degradados
+  //              suaves de fondo pero corta saltos bruscos.
   const DEFS = {
-    pedrito: {
-      src: 'assets/faces/pedrito.png',
-      poly: [
-        [55, 14], [68, 8], [82, 4], [95, 3], [108, 4], [122, 8], [135, 13],
-        [146, 19], [155, 28],
-        [162, 42], [167, 58], [170, 76], [170, 92], [168, 108],
-        [165, 125], [160, 142],
-        [152, 160], [140, 178], [125, 192], [108, 200], [95, 202],
-        [82, 200], [68, 192], [50, 178], [38, 160],
-        [30, 142], [25, 125], [22, 108], [20, 92], [22, 76], [25, 58],
-        [30, 42], [37, 28], [44, 19],
-      ],
-      colorKey: null,
-    },
-    marian: {
-      src: 'assets/faces/marian.png',
-      // Polígono ligeramente generoso. El colorKey limpia el morado oscuro
-      // entre los rizos del pelo.
-      poly: [
-        [113, 8], [125, 5], [138, 7], [150, 12], [162, 18],
-        [172, 28], [180, 42], [186, 58], [190, 76],
-        [193, 96], [191, 116], [186, 138], [180, 158],
-        [170, 176], [158, 190],
-        [142, 200], [125, 207], [113, 210], [100, 207], [85, 200],
-        [70, 190], [58, 176], [48, 158], [40, 138],
-        [35, 116], [33, 96], [36, 76], [40, 58], [46, 42],
-        [54, 28], [64, 18], [75, 12], [87, 7], [100, 5],
-      ],
-      colorKey: 'purple',
-    },
-    kike: {
-      src: 'assets/faces/kike.png',
-      poly: [
-        [78, 3], [95, 3], [110, 5], [125, 10], [138, 15],
-        [150, 22], [158, 35],
-        [163, 55], [165, 72],
-        [162, 86], [155, 94],
-        [150, 108], [153, 125], [150, 145],
-        [140, 170], [133, 190], [120, 210],
-        [105, 222], [88, 228], [70, 222],
-        [52, 210], [38, 190], [30, 170],
-        [20, 145], [15, 125], [18, 108],
-        [10, 94], [3, 86],
-        [3, 72], [5, 55],
-        [12, 35], [20, 22],
-        [30, 13], [45, 7], [62, 3],
-      ],
-      colorKey: null,
-    },
+    pedrito: { src: 'assets/faces/pedrito.png', edge: 140, colorStep: 42 },
+    marian:  { src: 'assets/faces/marian.png',  edge: 120, colorStep: 40 },
+    kike:    { src: 'assets/faces/kike.png',    edge: 150, colorStep: 46 },
   };
 
   const cache = {};
@@ -78,7 +43,7 @@
       cache[who] = { canvas: null, ready: false };
       const img = new Image();
       img.onload = () => {
-        try { cache[who] = buildSilhouette(img, def.poly, def.colorKey); }
+        try { cache[who] = buildSilhouette(img, def.edge, def.colorStep); }
         catch (_) { cache[who] = { canvas: null, ready: false }; }
         loaded++; if (loaded === total) ready = true;
       };
@@ -87,66 +52,119 @@
     }
   }
 
-  function buildSilhouette(img, poly, colorKey) {
+  function buildSilhouette(img, EDGE_T, COLOR_STEP) {
     const W = img.naturalWidth || img.width;
     const H = img.naturalHeight || img.height;
-    let minX = W, maxX = 0, minY = H, maxY = 0;
-    for (const [x, y] of poly) {
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    }
-    const pad = 1;
-    minX = Math.max(0, minX - pad);
-    minY = Math.max(0, minY - pad);
-    maxX = Math.min(W, maxX + pad);
-    maxY = Math.min(H, maxY + pad);
+    const work = document.createElement('canvas');
+    work.width = W; work.height = H;
+    const wx = work.getContext('2d', { willReadFrequently: true });
+    wx.drawImage(img, 0, 0);
+    const id = wx.getImageData(0, 0, W, H);
+    const d = id.data;
 
-    const cw = maxX - minX;
-    const ch = maxY - minY;
-    const c = document.createElement('canvas');
-    c.width = cw;
-    c.height = ch;
-    const cx = c.getContext('2d');
-
-    // Aplica clip del polígono y dibuja la imagen trasladada al origen del bbox
-    cx.save();
-    cx.beginPath();
-    for (let i = 0; i < poly.length; i++) {
-      const px = poly[i][0] - minX;
-      const py = poly[i][1] - minY;
-      if (i === 0) cx.moveTo(px, py);
-      else cx.lineTo(px, py);
-    }
-    cx.closePath();
-    cx.clip();
-    cx.drawImage(img, -minX, -minY);
-    cx.restore();
-
-    // Color-key opcional para limpiar bleed dentro del polígono
-    if (colorKey) {
-      const id = cx.getImageData(0, 0, cw, ch);
-      const d = id.data;
-      const test = colorKey === 'purple' ? isPurpleBg : null;
-      if (test) {
-        for (let i = 0; i < d.length; i += 4) {
-          if (d[i + 3] === 0) continue;
-          if (test(d[i], d[i + 1], d[i + 2])) d[i + 3] = 0;
-        }
-        cx.putImageData(id, 0, 0);
+    // Gradiente Sobel L1 por píxel.
+    const edge = new Uint16Array(W * H);
+    for (let y = 1; y < H - 1; y++) {
+      for (let x = 1; x < W - 1; x++) {
+        const iL = (y * W + (x - 1)) * 4;
+        const iR = (y * W + (x + 1)) * 4;
+        const iU = ((y - 1) * W + x) * 4;
+        const iD = ((y + 1) * W + x) * 4;
+        const gx = Math.abs(d[iR]     - d[iL])     +
+                   Math.abs(d[iR + 1] - d[iL + 1]) +
+                   Math.abs(d[iR + 2] - d[iL + 2]);
+        const gy = Math.abs(d[iD]     - d[iU])     +
+                   Math.abs(d[iD + 1] - d[iU + 1]) +
+                   Math.abs(d[iD + 2] - d[iU + 2]);
+        edge[y * W + x] = gx + gy;
       }
     }
 
-    return { canvas: c, ready: true, w: cw, h: ch };
-  }
+    // Flood-fill BFS desde todo el marco.
+    const bg = new Uint8Array(W * H);
+    const qx = new Int32Array(W * H);
+    const qy = new Int32Array(W * H);
+    let qLen = 0;
+    function seed(x, y) {
+      const idx = y * W + x;
+      if (bg[idx]) return;
+      bg[idx] = 1;
+      qx[qLen] = x; qy[qLen] = y; qLen++;
+    }
+    for (let x = 0; x < W; x++) { seed(x, 0); seed(x, H - 1); }
+    for (let y = 0; y < H; y++) { seed(0, y); seed(W - 1, y); }
 
-  // Morado MUY oscuro y desaturado del fondo de la foto de Marian. Muy
-  // restrictivo para no comerse piel rosada ni pelo castaño.
-  function isPurpleBg(r, g, b) {
-    if (r < 90 && g < 75 && b > g + 12) return true;
-    if (r < 60 && g < 50 && b > 30)     return true;
-    return false;
+    const COLOR_T = COLOR_STEP * 3; // suma RGB
+
+    let head = 0;
+    while (head < qLen) {
+      const x = qx[head];
+      const y = qy[head++];
+      const i = (y * W + x) * 4;
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      // 4-vecinos
+      for (let n = 0; n < 4; n++) {
+        let nx = x, ny = y;
+        if (n === 0) nx = x + 1;
+        else if (n === 1) nx = x - 1;
+        else if (n === 2) ny = y + 1;
+        else ny = y - 1;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const nidx = ny * W + nx;
+        if (bg[nidx]) continue;
+        if (edge[nidx] > EDGE_T) continue;
+        const ni = nidx * 4;
+        const dR = d[ni]     - r;
+        const dG = d[ni + 1] - g;
+        const dB = d[ni + 2] - b;
+        const cd = (dR < 0 ? -dR : dR) +
+                   (dG < 0 ? -dG : dG) +
+                   (dB < 0 ? -dB : dB);
+        if (cd > COLOR_T) continue;
+        bg[nidx] = 1;
+        qx[qLen] = nx; qy[qLen] = ny; qLen++;
+      }
+    }
+
+    // Aplica alpha=0 en bg.
+    let fgCount = 0;
+    for (let i = 0, p = 0; i < bg.length; i++, p += 4) {
+      if (bg[i]) d[p + 3] = 0;
+      else fgCount++;
+    }
+    // Si el flood-fill se ha comido casi todo (parámetros mal afinados),
+    // mejor abortar y caer al dibujo codificado.
+    if (fgCount < (W * H) * 0.08) return { canvas: null, ready: false };
+
+    wx.putImageData(id, 0, 0);
+
+    // bbox del foreground.
+    let minX = W, maxX = -1, minY = H, maxY = -1;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (d[(y * W + x) * 4 + 3] > 0) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    if (maxX < 0) return { canvas: null, ready: false };
+
+    const pad = 1;
+    minX = Math.max(0, minX - pad);
+    minY = Math.max(0, minY - pad);
+    maxX = Math.min(W - 1, maxX + pad);
+    maxY = Math.min(H - 1, maxY + pad);
+    const cw = maxX - minX + 1;
+    const ch = maxY - minY + 1;
+    const out = document.createElement('canvas');
+    out.width = cw; out.height = ch;
+    const ox = out.getContext('2d');
+    ox.drawImage(work, minX, minY, cw, ch, 0, 0, cw, ch);
+
+    return { canvas: out, ready: true, w: cw, h: ch };
   }
 
   function drawHead(ctx, who, cx, cy, w, opts) {
