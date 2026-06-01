@@ -79,7 +79,7 @@
     spawnTimer -= dt;
     if (spawnTimer <= 0) {
       spawnObstacle();
-      spawnTimer = 0.55 - Math.min(0.30, timer / 50);
+      spawnTimer = 1.10 - Math.min(0.45, timer / 50);
     }
 
     for (let i = obstacles.length - 1; i >= 0; i--) {
@@ -140,7 +140,7 @@
 
   function drawPlayer(ctx) {
     if (window.Vehicles && window.Vehicles.isReady()) {
-      const w = 96;
+      const w = 48;
       const h = w * window.Vehicles.aspect();
       const cx = player.x + PLAYER_W / 2;
       const cy = player.y + PLAYER_H - h / 2;

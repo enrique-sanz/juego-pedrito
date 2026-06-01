@@ -1,34 +1,26 @@
-// Carga las fotos reales de Pedrito, Marian y Kike y construye una silueta
-// pixel-perfect mediante segmentación automática:
+// Carga las fotos de Pedrito, Marian y Kike y las usa TAL CUAL (sin filtros ni
+// retoques sobre la cara). Lo único que se hace es eliminar el FONDO de estudio:
 //
-//   1) Calcula un mapa de magnitud de gradiente (Sobel L1) sobre la imagen.
-//   2) Lanza un flood-fill BFS desde TODOS los píxeles del borde del PNG
-//      (que son fondo por definición). El BFS avanza a un vecino solo si:
-//        - el gradiente en el vecino está por debajo de `edge` (no cruza
-//          contornos fuertes como pelo / mejilla / gorra), Y
-//        - la diferencia de color con el píxel actual es pequeña (permite
-//          gradientes suaves de fondo, p.ej. cielo → césped).
-//   3) Todos los píxeles alcanzados son fondo → alpha 0. El resto (cara,
-//      pelo, gorra, hombros si están bien recortados) queda intacto.
-//   4) Recorta al bbox del foreground.
+//   1) Se muestrea el color medio del marco (el fondo siempre toca los bordes).
+//   2) Flood-fill desde los bordes que borra los píxeles conectados y parecidos
+//      al fondo (paso suave entre vecinos + distancia máxima al color de fondo),
+//      deteniéndose en el sujeto. Sirve para fondos blancos, crema o grises.
+//   3) Se conserva solo el componente conectado más grande (la cabeza), lo que
+//      elimina motas sueltas como marcas de agua en las esquinas.
 //
-// No hay polígonos a mano: el contorno sigue literalmente la silueta de cada
-// foto. Si la segmentación falla (foreground < 8% del área), se devuelve
-// canvas:null y characters.js dibuja la versión codificada como fallback.
+// Si la imagen no tiene un fondo uniforme en los bordes, no se borra apenas
+// nada y se muestra entera.
 (function () {
   'use strict';
 
-  // Parámetros afinados por foto:
-  //   edge:      umbral del gradiente que corta el flood-fill (más alto => más
-  //              permisivo, más pintura quitada). Sobel L1 ≈ 0..1530.
-  //   colorStep: máxima diferencia L1 RGB entre píxel y vecino para considerar
-  //              que pertenecen al mismo "trozo" de fondo. Permite degradados
-  //              suaves de fondo pero corta saltos bruscos.
   const DEFS = {
-    pedrito: { src: 'assets/faces/pedrito.png', edge: 140, colorStep: 42 },
-    marian:  { src: 'assets/faces/marian.png',  edge: 120, colorStep: 40 },
-    kike:    { src: 'assets/faces/kike.png',    edge: 150, colorStep: 46 },
+    pedrito: { src: 'assets/faces/pedrito.png' },
+    marian:  { src: 'assets/faces/marian.png' },
+    kike:    { src: 'assets/faces/kike.png' },
   };
+
+  const STEP = 26;       // diferencia L1 máxima entre vecinos para seguir el fondo
+  const MAXDIST = 72;    // distancia L1 máxima al color de fondo muestreado
 
   const cache = {};
   let ready = false;
@@ -43,7 +35,7 @@
       cache[who] = { canvas: null, ready: false };
       const img = new Image();
       img.onload = () => {
-        try { cache[who] = buildSilhouette(img, def.edge, def.colorStep); }
+        try { cache[who] = buildImage(img); }
         catch (_) { cache[who] = { canvas: null, ready: false }; }
         loaded++; if (loaded === total) ready = true;
       };
@@ -52,7 +44,7 @@
     }
   }
 
-  function buildSilhouette(img, EDGE_T, COLOR_STEP) {
+  function buildImage(img) {
     const W = img.naturalWidth || img.width;
     const H = img.naturalHeight || img.height;
     const work = document.createElement('canvas');
@@ -62,25 +54,18 @@
     const id = wx.getImageData(0, 0, W, H);
     const d = id.data;
 
-    // Gradiente Sobel L1 por píxel.
-    const edge = new Uint16Array(W * H);
-    for (let y = 1; y < H - 1; y++) {
-      for (let x = 1; x < W - 1; x++) {
-        const iL = (y * W + (x - 1)) * 4;
-        const iR = (y * W + (x + 1)) * 4;
-        const iU = ((y - 1) * W + x) * 4;
-        const iD = ((y + 1) * W + x) * 4;
-        const gx = Math.abs(d[iR]     - d[iL])     +
-                   Math.abs(d[iR + 1] - d[iL + 1]) +
-                   Math.abs(d[iR + 2] - d[iL + 2]);
-        const gy = Math.abs(d[iD]     - d[iU])     +
-                   Math.abs(d[iD + 1] - d[iU + 1]) +
-                   Math.abs(d[iD + 2] - d[iU + 2]);
-        edge[y * W + x] = gx + gy;
-      }
+    // 1) Color de fondo = media de los píxeles del marco.
+    let sr = 0, sg = 0, sb = 0, n = 0;
+    function accum(x, y) { const p = (y * W + x) * 4; sr += d[p]; sg += d[p + 1]; sb += d[p + 2]; n++; }
+    for (let x = 0; x < W; x++) { accum(x, 0); accum(x, H - 1); }
+    for (let y = 0; y < H; y++) { accum(0, y); accum(W - 1, y); }
+    const br = sr / n, bg_ = sg / n, bb = sb / n;
+
+    function distBg(p) {
+      return Math.abs(d[p] - br) + Math.abs(d[p + 1] - bg_) + Math.abs(d[p + 2] - bb);
     }
 
-    // Flood-fill BFS desde todo el marco.
+    // 2) Flood-fill de fondo desde los bordes.
     const bg = new Uint8Array(W * H);
     const qx = new Int32Array(W * H);
     const qy = new Int32Array(W * H);
@@ -88,83 +73,103 @@
     function seed(x, y) {
       const idx = y * W + x;
       if (bg[idx]) return;
-      bg[idx] = 1;
-      qx[qLen] = x; qy[qLen] = y; qLen++;
+      if (distBg(idx * 4) > MAXDIST) return;
+      bg[idx] = 1; qx[qLen] = x; qy[qLen] = y; qLen++;
     }
     for (let x = 0; x < W; x++) { seed(x, 0); seed(x, H - 1); }
     for (let y = 0; y < H; y++) { seed(0, y); seed(W - 1, y); }
-
-    const COLOR_T = COLOR_STEP * 3; // suma RGB
 
     let head = 0;
     while (head < qLen) {
       const x = qx[head];
       const y = qy[head++];
-      const i = (y * W + x) * 4;
-      const r = d[i], g = d[i + 1], b = d[i + 2];
-      // 4-vecinos
-      for (let n = 0; n < 4; n++) {
+      const p = (y * W + x) * 4;
+      const r = d[p], g = d[p + 1], b = d[p + 2];
+      for (let nn = 0; nn < 4; nn++) {
         let nx = x, ny = y;
-        if (n === 0) nx = x + 1;
-        else if (n === 1) nx = x - 1;
-        else if (n === 2) ny = y + 1;
+        if (nn === 0) nx = x + 1;
+        else if (nn === 1) nx = x - 1;
+        else if (nn === 2) ny = y + 1;
         else ny = y - 1;
         if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
         const nidx = ny * W + nx;
         if (bg[nidx]) continue;
-        if (edge[nidx] > EDGE_T) continue;
-        const ni = nidx * 4;
-        const dR = d[ni]     - r;
-        const dG = d[ni + 1] - g;
-        const dB = d[ni + 2] - b;
-        const cd = (dR < 0 ? -dR : dR) +
-                   (dG < 0 ? -dG : dG) +
-                   (dB < 0 ? -dB : dB);
-        if (cd > COLOR_T) continue;
-        bg[nidx] = 1;
-        qx[qLen] = nx; qy[qLen] = ny; qLen++;
+        const np = nidx * 4;
+        if (Math.abs(d[np] - r) + Math.abs(d[np + 1] - g) + Math.abs(d[np + 2] - b) > STEP) continue;
+        if (distBg(np) > MAXDIST) continue;
+        bg[nidx] = 1; qx[qLen] = nx; qy[qLen] = ny; qLen++;
       }
     }
 
-    // Aplica alpha=0 en bg.
-    let fgCount = 0;
-    for (let i = 0, p = 0; i < bg.length; i++, p += 4) {
-      if (bg[i]) d[p + 3] = 0;
-      else fgCount++;
-    }
-    // Si el flood-fill se ha comido casi todo (parámetros mal afinados),
-    // mejor abortar y caer al dibujo codificado.
-    if (fgCount < (W * H) * 0.08) return { canvas: null, ready: false };
+    // 3) Conserva solo el mayor componente conectado de primer plano.
+    keepLargestForeground(bg, qx, qy, W, H);
 
+    // Aplica transparencia.
+    let removed = 0;
+    for (let i = 0, p = 0; i < bg.length; i++, p += 4) {
+      if (bg[i]) { d[p + 3] = 0; removed++; }
+    }
     wx.putImageData(id, 0, 0);
 
-    // bbox del foreground.
-    let minX = W, maxX = -1, minY = H, maxY = -1;
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        if (d[(y * W + x) * 4 + 3] > 0) {
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-          if (y < minY) minY = y;
-          if (y > maxY) maxY = y;
+    // 4) Recorte al bbox visible (si no se quitó nada, imagen entera).
+    let minX = 0, minY = 0, maxX = W - 1, maxY = H - 1;
+    if (removed > 0) {
+      minX = W; minY = H; maxX = -1; maxY = -1;
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          if (d[(y * W + x) * 4 + 3] > 0) {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
         }
       }
+      if (maxX < 0) return { canvas: null, ready: false };
     }
-    if (maxX < 0) return { canvas: null, ready: false };
 
-    const pad = 1;
-    minX = Math.max(0, minX - pad);
-    minY = Math.max(0, minY - pad);
-    maxX = Math.min(W - 1, maxX + pad);
-    maxY = Math.min(H - 1, maxY + pad);
     const cw = maxX - minX + 1;
     const ch = maxY - minY + 1;
     const out = document.createElement('canvas');
     out.width = cw; out.height = ch;
     const ox = out.getContext('2d');
     ox.drawImage(work, minX, minY, cw, ch, 0, 0, cw, ch);
-
     return { canvas: out, ready: true, w: cw, h: ch };
+  }
+
+  // Marca como fondo cualquier primer plano que NO pertenezca al mayor
+  // componente conectado (elimina motas: marcas de agua, brillos sueltos...).
+  // Etiquetado por componentes con un Int32Array (sin arrays por componente,
+  // para que funcione bien también a resolución alta).
+  function keepLargestForeground(bg, qx, qy, W, H) {
+    const N = W * H;
+    const label = new Int32Array(N);   // 0 = fondo / sin visitar
+    let cur = 0, bestLabel = 0, bestSize = 0;
+    for (let s = 0; s < N; s++) {
+      if (bg[s] || label[s]) continue;
+      cur++;
+      let ql = 0, hd = 0;
+      qx[0] = s % W; qy[0] = (s / W) | 0; ql = 1; label[s] = cur;
+      let size = 0;
+      while (hd < ql) {
+        const x = qx[hd], y = qy[hd]; hd++; size++;
+        for (let nn = 0; nn < 4; nn++) {
+          let nx = x, ny = y;
+          if (nn === 0) nx = x + 1;
+          else if (nn === 1) nx = x - 1;
+          else if (nn === 2) ny = y + 1;
+          else ny = y - 1;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+          const nidx = ny * W + nx;
+          if (bg[nidx] || label[nidx]) continue;
+          label[nidx] = cur;
+          qx[ql] = nx; qy[ql] = ny; ql++;
+        }
+      }
+      if (size > bestSize) { bestSize = size; bestLabel = cur; }
+    }
+    if (!bestLabel) return;
+    for (let i = 0; i < N; i++) if (!bg[i] && label[i] !== bestLabel) bg[i] = 1;
   }
 
   function drawHead(ctx, who, cx, cy, w, opts) {

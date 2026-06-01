@@ -92,35 +92,6 @@
     if (o.rotation) ctx.rotate(o.rotation);
     ctx.drawImage(state.canvas, -dw / 2, -h / 2, dw, h);
 
-    // El logo "MANITOU" del PNG va rotado en el lateral y se vuelve ilegible
-    // al escalar al tamaño de juego (~60-80 px). Pintamos encima un label
-    // sintético, también vertical (M arriba, U abajo) para respetar la
-    // estética del LEGO real, con contorno negro para destacar sobre el rojo.
-    ctx.save();
-    ctx.imageSmoothingEnabled = false;
-    const fontPx = Math.max(5, Math.round(w * 0.16));
-    ctx.font = `${fontPx}px "Press Start 2P", monospace`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.translate(-dw * 0.06, -h * 0.04);
-    ctx.rotate(-Math.PI / 2);
-    const letters = ['M', 'A', 'N', 'I', 'T', 'O', 'U'];
-    const span = w * 0.62;
-    const step = span / (letters.length - 1);
-    for (let i = 0; i < letters.length; i++) {
-      const lx = -span / 2 + i * step;
-      ctx.fillStyle = '#000';
-      for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-          if (dx === 0 && dy === 0) continue;
-          ctx.fillText(letters[i], lx + dx, dy);
-        }
-      }
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(letters[i], lx, 0);
-    }
-    ctx.restore();
-
     ctx.restore();
     ctx.imageSmoothingEnabled = prevSmooth;
     ctx.imageSmoothingQuality = prevQuality;
