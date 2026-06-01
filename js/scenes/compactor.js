@@ -201,7 +201,6 @@
     const c = targetCol();
     if (c < 0 || c >= COLS) return '—';
     if (holding) {
-      if (holding === 'sq' && topItem(c) === 'ramp') return '—';
       if (height(c) + 1 > level() + REACH) return '—';   // fuera de alcance
       return 'SOLTAR';
     }
@@ -212,7 +211,6 @@
     const c = targetCol();
     if (c < 0 || c >= COLS) return;
     if (holding) {
-      if (holding === 'sq' && topItem(c) === 'ramp') return;
       if (height(c) + 1 > level() + REACH) return;
       cols[c].push(holding);
       holding = null;
