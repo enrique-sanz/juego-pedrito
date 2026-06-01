@@ -70,6 +70,15 @@ Carga de scripts en `index.html`: utilidades primero, escenas después, `main.js
 - El texto de la intro (crawl) vive en `story/intro.txt`. **Solo el subagente `story-keeper` lo modifica.** Si vas a cambiar mecánicas o añadir contenido narrativo, invoca a `story-keeper` para que actualice la intro coherentemente.
 - Los dibujos de personajes están centralizados en `js/engine/characters.js`. No reimplementar siluetas en cada escena.
 
+## Controles
+
+- **Móvil (touch):** todos los minijuegos se controlan con el dedo. El duelo final tiene cuatro botones grandes (izquierda: retroceder / avanzar; derecha: BLOQ / ATAC) y soporta multi-touch (moverse y atacar a la vez).
+- **Desktop (teclado):**
+  - `←` / `→`: mover horizontalmente (invaders, racing, duelo).
+  - `Espacio`: disparar (invaders), golpear punto débil (compactor), avanzar texto / atacar (duelo).
+  - `Z`: ataque alternativo en el duelo. `X`: defender en el duelo.
+  - `Enter` / `Espacio`: desbloquear overlay inicial, saltar intro, avanzar pantallas narrativas, reiniciar tras victoria/derrota.
+
 ## Modo debug (huevo de pascua)
 
 Tres taps consecutivos en la esquina superior derecha (~10% del ancho × 10% del alto) abren un panel:

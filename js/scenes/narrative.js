@@ -74,7 +74,7 @@
       alpha = Math.min(1, timer / 0.8);
       stars.update(dt);
 
-      if (timer > 1.0 && window.Input.pointer.justPressed) {
+      if (timer > 1.0 && window.Input.actionJustPressed()) {
         window.Loop.setScene(SCRIPTS[key].next);
       }
     }
@@ -104,7 +104,7 @@
       if (Math.floor(timer * 2) % 2 === 0 && timer > 1.0) {
         ctx.fillStyle = '#ffe81f';
         ctx.font = '8px "Press Start 2P", monospace';
-        ctx.fillText('TOCA PARA CONTINUAR', W / 2, H - 60);
+        ctx.fillText('TOCA O PULSA ENTER', W / 2, H - 60);
       }
 
       // HUD de vidas
@@ -116,15 +116,17 @@
     return { enter, update, render };
   }
 
-  function drawLives(ctx) {
+  function drawLives(ctx, x, y) {
+    const ox = (typeof x === 'number') ? x : 10;
+    const oy = (typeof y === 'number') ? y : 12;
     const s = window.GameState.state;
     for (let i = 0; i < s.maxLives; i++) {
-      window.Characters.drawHeart(ctx, 10 + i * 12, 12, 1.5, i < s.lives);
+      window.Characters.drawHeart(ctx, ox + i * 12, oy, 1.5, i < s.lives);
     }
     if (s.infiniteLives) {
       ctx.fillStyle = '#ffe81f';
       ctx.font = '8px "Press Start 2P", monospace';
-      ctx.fillText('∞', 10 + s.maxLives * 12 + 2, 24);
+      ctx.fillText('∞', ox + s.maxLives * 12 + 2, oy + 12);
     }
   }
 

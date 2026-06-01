@@ -21,7 +21,7 @@
     if (t > 1.5 && phase === 0) phase = 1;
     if (t > 3.5 && phase === 1) phase = 2;
 
-    if (phase === 2 && window.Input.pointer.justPressed) {
+    if (phase === 2 && window.Input.actionJustPressed()) {
       window.GameState.reset();
       window.Loop.setScene('INTRO_CRAWL');
     }
@@ -80,7 +80,7 @@
     if (phase >= 2) {
       ctx.fillStyle = '#ffe81f';
       if (Math.floor(t * 2) % 2 === 0) {
-        ctx.fillText('TOCA PARA REINTENTAR', W / 2, H - 60);
+        ctx.fillText('TOCA O ENTER PARA REINTENTAR', W / 2, H - 60);
       }
     }
     ctx.textAlign = 'left';

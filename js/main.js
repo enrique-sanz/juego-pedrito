@@ -16,7 +16,10 @@
     // entra en la intro (Safari/iOS lo exige).
     window.Loop.setScene('INTRO_CRAWL'); // se renderiza detrás del overlay
 
+    let started = false;
     const startGame = () => {
+      if (started) return;
+      started = true;
       window.Audio8.init();
       overlay.classList.add('hidden');
       overlay.style.display = 'none';
@@ -25,8 +28,16 @@
       window.Loop.setScene('INTRO_CRAWL');
     };
 
-    overlay.addEventListener('click', startGame, { once: true });
-    overlay.addEventListener('touchend', (e) => { e.preventDefault(); startGame(); }, { once: true, passive: false });
+    overlay.addEventListener('click', startGame);
+    overlay.addEventListener('touchend', (e) => { e.preventDefault(); startGame(); }, { passive: false });
+    // En desktop también vale el teclado
+    window.addEventListener('keydown', (e) => {
+      if (started) return;
+      if (e.code === 'Enter' || e.code === 'Space' || e.code === 'NumpadEnter') {
+        e.preventDefault();
+        startGame();
+      }
+    });
   }
 
   if (document.readyState === 'loading') {

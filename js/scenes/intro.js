@@ -63,8 +63,8 @@
       finished = true;
     }
 
-    // Permitir saltarse la intro con un tap
-    if (window.Input.pointer.justPressed) {
+    // Permitir saltarse la intro con tap o tecla
+    if (window.Input.actionJustPressed()) {
       finished = true;
     }
 

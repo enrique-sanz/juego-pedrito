@@ -98,8 +98,8 @@
           s: 2 + Math.random() * 2,
         });
       }
-      // Cualquier tap reinicia
-      if (window.Input.pointer.justPressed) {
+      // Cualquier tap o tecla reinicia
+      if (window.Input.actionJustPressed()) {
         window.GameState.reset();
         window.Loop.setScene('INTRO_CRAWL');
         return;
@@ -215,7 +215,7 @@
       ctx.fillText('A MARIAN', W / 2, 148);
       ctx.font = '8px "Press Start 2P", monospace';
       ctx.fillStyle = '#fff';
-      ctx.fillText('TOCA PARA VOLVER A JUGAR', W / 2, 180);
+      ctx.fillText('TOCA O PULSA ENTER', W / 2, 180);
       ctx.textAlign = 'left';
     }
   }

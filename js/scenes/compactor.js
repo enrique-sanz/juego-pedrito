@@ -50,10 +50,11 @@
       if (w.life <= 0) weakPoints.splice(i, 1);
     }
 
-    // Detección de tap → golpear punto débil más cercano
+    // Detección de tap → golpear punto débil. Con teclado (Espacio/Enter),
+    // golpea el punto débil más antiguo en pantalla.
+    let hitIdx = -1;
     if (window.Input.pointer.justPressed) {
       const p = window.Input.pointer;
-      let hitIdx = -1;
       for (let i = 0; i < weakPoints.length; i++) {
         const w = weakPoints[i];
         const dx = p.x - w.x, dy = p.y - w.y;
@@ -62,13 +63,17 @@
           break;
         }
       }
-      if (hitIdx >= 0) {
-        weakPoints.splice(hitIdx, 1);
-        gap += 22;            // ¡las paredes retroceden!
-        if (gap > START_GAP) gap = START_GAP;
-        window.Audio8.sfx('hit');
-        shakeT = 0.2;
-      }
+    } else if (window.Input.isKeyJustPressed('Space') ||
+               window.Input.isKeyJustPressed('Enter') ||
+               window.Input.isKeyJustPressed('NumpadEnter')) {
+      if (weakPoints.length) hitIdx = 0;
+    }
+    if (hitIdx >= 0) {
+      weakPoints.splice(hitIdx, 1);
+      gap += 22;            // ¡las paredes retroceden!
+      if (gap > START_GAP) gap = START_GAP;
+      window.Audio8.sfx('hit');
+      shakeT = 0.2;
     }
 
     if (shakeT > 0) shakeT -= dt;
@@ -165,6 +170,7 @@
     ctx.textAlign = 'center';
     ctx.fillText('PARED: ' + Math.max(0, Math.round((gap - WALL_LIMIT))), W / 2, 18);
     ctx.fillText('PULSA LOS PUNTOS ROJOS', W / 2, 38);
+    ctx.fillText('(o ESPACIO en desktop)', W / 2, 50);
 
     // Barra de tiempo restante
     const pw = (W - 80) * Math.min(1, timer / DURATION);
