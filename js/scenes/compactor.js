@@ -96,14 +96,14 @@
     window.Effects.reset();
   }
 
-  // Restablece el puzle al orden inicial (escombros, posición y techo) sin
-  // perder vida ni volver a la intro. Para cuando el jugador se queda bloqueado.
+  // Restablece los escombros al orden inicial (y la posición de la Manitou) sin
+  // tocar el techo, ni perder vida, ni volver a la intro. El techo sigue bajando:
+  // es para cuando el jugador se atasca, no un respiro de tiempo.
   function resetPuzzle() {
     cols = initialCols();
     manitouCol = 1;
     facing = 1;
     holding = null;
-    ceilY = C_TOP_LIMIT;
     liftAnim = 0; dropAnim = 0;
     shakeT = 0;
     exiting = false; exitT = 0;
